@@ -225,8 +225,8 @@ static __global__ void get_neighbors_of_i(
 }
 
 static __global__ void create_inputs_for_energy_calculator(
-  const int N,
   const int N_local,
+  const int i,
   const int* atom_local,
   const Box box,
   const float rc_radial_square,
@@ -236,8 +236,6 @@ static __global__ void create_inputs_for_energy_calculator(
   const double* __restrict__ g_z,
   const int* g_type_before,
   const int* g_type_after,
-  int* g_NN_radial,
-  int* g_NN_angular,
   int* g_t2_radial_before,
   int* g_t2_radial_after,
   int* g_t2_angular_before,
@@ -249,39 +247,32 @@ static __global__ void create_inputs_for_energy_calculator(
   float* g_y12_angular,
   float* g_z12_angular)
 {
-  int n2 = blockIdx.x * blockDim.x + threadIdx.x;
-  if (n2 < N) {
-    double x2 = g_x[n2];
-    double y2 = g_y[n2];
-    double z2 = g_z[n2];
+  int k = blockIdx.x * blockDim.x + threadIdx.x; // neighbors of the swapped atom i
+  if (k<N_local) {
+    int n1 = atom_local[k];
 
-    for (int k = 0; k < N_local; ++k) {
-      int n1 = atom_local[k];
-      if (n1 == n2) {
-        continue;
-      }
-      double x12 = x2 - g_x[n1];
-      double y12 = y2 - g_y[n1];
-      double z12 = z2 - g_z[n1];
+    if (n1 != i) {
+      double x2 = g_x[n1];
+      double y2 = g_y[n1];
+      double z2 = g_z[n1];
+      double x12 = x2 - g_x[i];
+      double y12 = y2 - g_y[i];
+      double z12 = z2 - g_z[i];
       apply_mic(box, x12, y12, z12);
       float distance_square = float(x12 * x12 + y12 * y12 + z12 * z12);
       if (distance_square < rc_radial_square) {
-        int count_radial = atomicAdd(&g_NN_radial[k], 1);
-        int index_radial = count_radial * N_local + k;
-        g_t2_radial_before[index_radial] = g_type_before[n2];
-        g_t2_radial_after[index_radial] = g_type_after[n2];
-        g_x12_radial[index_radial] = float(x12);
-        g_y12_radial[index_radial] = float(y12);
-        g_z12_radial[index_radial] = float(z12);
+        g_t2_radial_before[k] = g_type_before[n1];
+        g_t2_radial_after[k] = g_type_after[n1];
+        g_x12_radial[k] = float(x12);
+        g_y12_radial[k] = float(y12);
+        g_z12_radial[k] = float(z12);
       }
       if (distance_square < rc_angular_square) {
-        int count_angular = atomicAdd(&g_NN_angular[k], 1);
-        int index_angular = count_angular * N_local + k;
-        g_t2_angular_before[index_angular] = g_type_before[n2];
-        g_t2_angular_after[index_angular] = g_type_after[n2];
-        g_x12_angular[index_angular] = float(x12);
-        g_y12_angular[index_angular] = float(y12);
-        g_z12_angular[index_angular] = float(z12);
+        g_t2_angular_before[k] = g_type_before[n1];
+        g_t2_angular_after[k] = g_type_after[n1];
+        g_x12_angular[k] = float(x12);
+        g_y12_angular[k] = float(y12);
+        g_z12_angular[k] = float(z12);
       }
     }
   }
@@ -340,6 +331,11 @@ void MC_Ensemble_SGC::compute(
     grouping_method >= 0 ? groups[grouping_method].cpu_size[group_id] : atom.number_of_atoms;
   std::uniform_int_distribution<int> r1(0, group_size - 1);
 
+
+  compute_q_radial(); // *** todo ***
+  compute_s_angular(); // *** todo ***
+  save_pe_before_total(compute_pe_total()); // *** todo ***
+
   int num_accepted = 0;
   for (int step = 0; step < num_steps_mc; ++step) {
     int i = -1;
@@ -390,22 +386,18 @@ void MC_Ensemble_SGC::compute(
       local_type_after.data());
     GPU_CHECK_KERNEL
 
-    CHECK(gpuMemset(NN_radial.data(), 0, sizeof(int) * NN_radial.size()));
-    CHECK(gpuMemset(NN_angular.data(), 0, sizeof(int) * NN_angular.size()));
-    create_inputs_for_energy_calculator<<<(atom.number_of_atoms - 1) / 64 + 1, 64>>>(
-      atom.number_of_atoms,
+    create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
       NN_ij_cpu,
+      i,
       NL_ij.data(),
       box,
       nep_energy.paramb.rc_radial * nep_energy.paramb.rc_radial,
       nep_energy.paramb.rc_angular * nep_energy.paramb.rc_angular,
-      atom.position_per_atom.data(),
-      atom.position_per_atom.data() + atom.number_of_atoms,
-      atom.position_per_atom.data() + atom.number_of_atoms * 2,
-      type_before.data(),
-      type_after.data(),
-      NN_radial.data(),
-      NN_angular.data(),
+      atom.position_per_atom.data(),//*** todo *** to local
+      atom.position_per_atom.data() + atom.number_of_atoms, //*** todo *** to local
+      atom.position_per_atom.data() + atom.number_of_atoms * 2, //*** todo *** to local
+      local_type_before.data(),
+      local_type_after.data(),
       t2_radial_before.data(),
       t2_radial_after.data(),
       t2_angular_before.data(),
@@ -420,25 +412,11 @@ void MC_Ensemble_SGC::compute(
 
     nep_energy.find_energy(
       NN_ij_cpu,
-      NN_radial.data(),
-      NN_angular.data(),
-      local_type_before.data(),
-      t2_radial_before.data(),
-      t2_angular_before.data(),
-      x12_radial.data(),
-      y12_radial.data(),
-      z12_radial.data(),
-      x12_angular.data(),
-      y12_angular.data(),
-      z12_angular.data(),
-      pe_before.data());
-
-    nep_energy.find_energy(
-      NN_ij_cpu,
-      NN_radial.data(),
-      NN_angular.data(),
       local_type_after.data(),
+      // ?????? local_type_before.data(), ?????
+      t2_radial_before.data(),
       t2_radial_after.data(),
+      t2_angular_before.data(),
       t2_angular_after.data(),
       x12_radial.data(),
       y12_radial.data(),
@@ -446,16 +424,17 @@ void MC_Ensemble_SGC::compute(
       x12_angular.data(),
       y12_angular.data(),
       z12_angular.data(),
-      pe_after.data());
+      pe_after.data(),
+      q_radial_trial.data(),
+      s_angular_trial.data());
 
     std::vector<float> pe_before_cpu(NN_ij_cpu);
     std::vector<float> pe_after_cpu(NN_ij_cpu);
     pe_before.copy_to_host(pe_before_cpu.data(), NN_ij_cpu);
     pe_after.copy_to_host(pe_after_cpu.data(), NN_ij_cpu);
-    float pe_before_total = 0.0f;
+    load_pe_before(); // *** todo ***
     float pe_after_total = 0.0f;
     for (int n = 0; n < NN_ij_cpu; ++n) {
-      pe_before_total += pe_before_cpu[n];
       pe_after_total += pe_after_cpu[n];
     }
     // printf("        per-atom energy before swapping = %g eV.\n", pe_before_total / NN_ij_cpu);
@@ -497,6 +476,10 @@ void MC_Ensemble_SGC::compute(
         atom.velocity_per_atom.data(),
         atom.velocity_per_atom.data() + atom.number_of_atoms,
         atom.velocity_per_atom.data() + atom.number_of_atoms * 2);
+
+      save_pe_before_total(pe_after_total); // *** todo ***
+      save_q_radial(q_radial_trial); // *** todo ***
+      save_s_angular(s_angular_trial); // *** todo ***
     }
   }
 
