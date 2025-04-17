@@ -298,88 +298,97 @@ static __global__ void find_energy_nep(
   NEP_Energy::ParaMB paramb,
   NEP_Energy::ANN annmb,
   const int N,
-  const int* g_NN_radial,
-  const int* g_NN_angular,
   const int* __restrict__ g_type,
-  const int* __restrict__ g_t2_radial,
-  const int* __restrict__ g_t2_angular,
+  // ?????? local_type_before.data(), ?????
+  const int* __restrict__ g_t2_radial_before,
+  const int* __restrict__ g_t2_angular_before,
+  const int* __restrict__ g_t2_radial_after,
+  const int* __restrict__ g_t2_angular_after,
   const float* __restrict__ g_x12_radial,
   const float* __restrict__ g_y12_radial,
   const float* __restrict__ g_z12_radial,
   const float* __restrict__ g_x12_angular,
   const float* __restrict__ g_y12_angular,
   const float* __restrict__ g_z12_angular,
-  float* g_pe)
+  float* g_pe,
+  float* g_q_radial_trial,
+  float* g_s_angular_trial)
 {
   int n1 = blockIdx.x * blockDim.x + threadIdx.x;
   if (n1 < N) {
     int t1 = g_type[n1];
-    float q[MAX_DIM] = {0.0f};
+    float q[MAX_DIM] = {0.0f}; 
+    load_q_radial(*q); // ***todo*** load saved q for radial components
 
     // get radial descriptors
-    for (int i1 = 0; i1 < g_NN_radial[n1]; ++i1) {
-      int index = i1 * N + n1;
-      float r12[3] = {g_x12_radial[index], g_y12_radial[index], g_z12_radial[index]};
+    float r12[3] = {g_x12_radial, g_y12_radial, g_z12_radial};
+    float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
+    float fc12;
+    int t2_before = g_t2_radial_before;
+    int t2_after = g_t2_radial_after;
+    double rc = paramb.rc_radial;
+    double rcinv = paramb.rcinv_radial;
+    if (paramb.use_typewise_cutoff) {
+      rc = min(
+        (COVALENT_RADIUS[paramb.atomic_numbers[t1]] +
+          COVALENT_RADIUS[paramb.atomic_numbers[t2_before]]) *
+          paramb.typewise_cutoff_radial_factor,
+        rc);
+      rcinv = 1.0f / rc;
+    }
+    find_fc(rc, rcinv, d12, fc12);
+
+    float fn12[MAX_NUM_N];
+    find_fn(paramb.basis_size_radial, rcinv, d12, fc12, fn12);
+    for (int n = 0; n <= paramb.n_max_radial; ++n) {
+      float dgn12 = 0.0f;
+      for (int k = 0; k <= paramb.basis_size_radial; ++k) {
+        int c_index_after = (n * (paramb.basis_size_radial + 1) + k) * paramb.num_types_sq;
+        int c_index_before = c_index_after;
+        c_index_before += t1 * paramb.num_types + t2_before;
+        c_index_after += t1 * paramb.num_types + t2_after;
+        dgn12 += fn12[k] * (annmb.c[c_index_after]-annmb.c[c_index_before]);
+      }
+      q[n] += dgn12;
+    }
+    save_q_radial_trial(); // *** todo ***
+    
+
+    // get angular descriptors
+    for (int n = 0; n <= paramb.n_max_angular; ++n) {
+      float s[NUM_OF_ABC] = {s_old}; // ***todo** load saved s for angular comp-s
+      float delta_s[NUM_OF_ABC] = {0.0f};
+      float r12[3] = {g_x12_angular, g_y12_angular, g_z12_angular};
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
       float fc12;
-      int t2 = g_t2_radial[index];
-      double rc = paramb.rc_radial;
-      double rcinv = paramb.rcinv_radial;
+      int t2_before = g_t2_angular_before;
+      int t2_after = g_t2_angular_after;
+      double rc = paramb.rc_angular;
+      double rcinv = paramb.rcinv_angular;
       if (paramb.use_typewise_cutoff) {
         rc = min(
           (COVALENT_RADIUS[paramb.atomic_numbers[t1]] +
-           COVALENT_RADIUS[paramb.atomic_numbers[t2]]) *
-            paramb.typewise_cutoff_radial_factor,
+            COVALENT_RADIUS[paramb.atomic_numbers[t2_before]]) *
+            paramb.typewise_cutoff_angular_factor,
           rc);
         rcinv = 1.0f / rc;
       }
       find_fc(rc, rcinv, d12, fc12);
 
       float fn12[MAX_NUM_N];
-      find_fn(paramb.basis_size_radial, rcinv, d12, fc12, fn12);
-      for (int n = 0; n <= paramb.n_max_radial; ++n) {
-        float gn12 = 0.0f;
-        for (int k = 0; k <= paramb.basis_size_radial; ++k) {
-          int c_index = (n * (paramb.basis_size_radial + 1) + k) * paramb.num_types_sq;
-          c_index += t1 * paramb.num_types + t2;
-          gn12 += fn12[k] * annmb.c[c_index];
-        }
-        q[n] += gn12;
+      find_fn(paramb.basis_size_angular, rcinv, d12, fc12, fn12);
+      float dgn12 = 0.0f;
+      for (int k = 0; k <= paramb.basis_size_angular; ++k) {
+        int c_index_before = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
+        int c_index_after = c_index_before;
+        c_index_before += t1 * paramb.num_types + t2_before + paramb.num_c_radial;
+        c_index_after += t1 * paramb.num_types + t2_after + paramb.num_c_radial;
+        dgn12 += fn12[k] * (annmb.c[c_index_after] - annmb.c[c_index_before]);
       }
-    }
+      accumulate_s(paramb.L_max, d12, r12[0], r12[1], r12[2], dgn12, delta_s);
 
-    // get angular descriptors
-    for (int n = 0; n <= paramb.n_max_angular; ++n) {
-      float s[NUM_OF_ABC] = {0.0f};
-      for (int i1 = 0; i1 < g_NN_angular[n1]; ++i1) {
-        int index = i1 * N + n1;
-        float r12[3] = {g_x12_angular[index], g_y12_angular[index], g_z12_angular[index]};
-        float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
-        float fc12;
-        int t2 = g_t2_angular[index];
-        double rc = paramb.rc_angular;
-        double rcinv = paramb.rcinv_angular;
-        if (paramb.use_typewise_cutoff) {
-          rc = min(
-            (COVALENT_RADIUS[paramb.atomic_numbers[t1]] +
-             COVALENT_RADIUS[paramb.atomic_numbers[t2]]) *
-              paramb.typewise_cutoff_angular_factor,
-            rc);
-          rcinv = 1.0f / rc;
-        }
-        find_fc(rc, rcinv, d12, fc12);
-
-        float fn12[MAX_NUM_N];
-        find_fn(paramb.basis_size_angular, rcinv, d12, fc12, fn12);
-        float gn12 = 0.0f;
-        for (int k = 0; k <= paramb.basis_size_angular; ++k) {
-          int c_index = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
-          c_index += t1 * paramb.num_types + t2 + paramb.num_c_radial;
-          gn12 += fn12[k] * annmb.c[c_index];
-        }
-        accumulate_s(paramb.L_max, d12, r12[0], r12[1], r12[2], gn12, s);
-      }
-      find_q(paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
+    find_q(paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s+delta_s, q + (paramb.n_max_radial + 1));
+    save_s_angular_trial(); // *** todo ***
     }
 
     // nomalize descriptor
@@ -463,37 +472,44 @@ static __global__ void find_energy_zbl(
 
 void NEP_Energy::find_energy(
   const int N,
-  const int* g_NN_radial,
-  const int* g_NN_angular,
   const int* g_type,
-  const int* g_t2_radial,
-  const int* g_t2_angular,
+  // ?????? local_type_before.data(), ?????
+  const int* g_t2_radial_before,
+  const int* g_t2_radial_after,
+  const int* g_t2_angular_before,
+  const int* g_t2_angular_after,
   const float* g_x12_radial,
   const float* g_y12_radial,
   const float* g_z12_radial,
   const float* g_x12_angular,
   const float* g_y12_angular,
   const float* g_z12_angular,
-  float* g_pe)
+  float* g_pe,
+  float* g_q_radial_trial,
+  float* g_s_angular_trial)
 {
   find_energy_nep<<<(N - 1) / 64 + 1, 64>>>(
     paramb,
     annmb,
     N,
-    g_NN_radial,
-    g_NN_angular,
     g_type,
-    g_t2_radial,
-    g_t2_angular,
+    // ?????? local_type_before.data(), ?????
+    g_t2_radial_before,
+    g_t2_radial_after,
+    g_t2_angular_before,
+    g_t2_angular_after,
     g_x12_radial,
     g_y12_radial,
     g_z12_radial,
     g_x12_angular,
     g_y12_angular,
     g_z12_angular,
-    g_pe);
+    g_pe,
+    g_q_radial_trial,
+    g_s_angular_trial);
   GPU_CHECK_KERNEL
 
+  /*  *** todo *** zbl support
   if (zbl.enabled) {
     find_energy_zbl<<<(N - 1) / 64 + 1, 64>>>(
       N,
@@ -508,4 +524,5 @@ void NEP_Energy::find_energy(
       g_pe);
     GPU_CHECK_KERNEL
   }
+  */
 }
