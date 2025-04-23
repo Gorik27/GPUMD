@@ -15,8 +15,35 @@
 
 #pragma once
 #include "model/box.cuh"
+#include "force/potential.cuh"
 #include "utilities/common.cuh"
 #include "utilities/gpu_vector.cuh"
+
+struct NEP_Data {
+  GPU_Vector<float> f12x; // 3-body or manybody partial forces
+  GPU_Vector<float> f12y; // 3-body or manybody partial forces
+  GPU_Vector<float> f12z; // 3-body or manybody partial forces
+  GPU_Vector<float> Fp;
+  GPU_Vector<float> sum_fxyz;
+  GPU_Vector<int> NN_radial;    // radial neighbor list
+  GPU_Vector<int> NL_radial;    // radial neighbor list
+  GPU_Vector<int> NN_angular;   // angular neighbor list
+  GPU_Vector<int> NL_angular;   // angular neighbor list
+  GPU_Vector<float> parameters; // parameters to be optimized
+  GPU_Vector<int> cell_count;
+  GPU_Vector<int> cell_count_sum;
+  GPU_Vector<int> cell_contents;
+  GPU_Vector<float> q_radial; // per-atom radial descriptor components
+  GPU_Vector<float> s_angular; // per-atom "s" part of the angular descriptor components
+  std::vector<int> cpu_NN_radial;
+  std::vector<int> cpu_NN_angular;
+#ifdef USE_TABLE
+  GPU_Vector<float> gn_radial;   // tabulated gn_radial functions
+  GPU_Vector<float> gnp_radial;  // tabulated gnp_radial functions
+  GPU_Vector<float> gn_angular;  // tabulated gn_angular functions
+  GPU_Vector<float> gnp_angular; // tabulated gnp_angular functions
+#endif
+};
 
 class NEP_Energy
 {
@@ -69,28 +96,48 @@ public:
     int num_types;
   };
 
+  struct ExpandedBox {
+    int num_cells[3];
+    float h[18];
+  };
+
   ParaMB paramb;
   ANN annmb;
   ZBL zbl;
+  NEP_Data nep_data;
+  ExpandedBox ebox;
 
   NEP_Energy(void);
   ~NEP_Energy(void);
-  void initialize(const char* file_potential);
+  void initialize(const char* file_potential, const int num_atoms);
   void find_energy(
     const int N,
-    const int* g_NN_radial,
-    const int* g_NN_angular,
     const int* g_type,
-    const int* g_t2_radial,
-    const int* g_t2_angular,
+    // ?????? local_type_before.data(), ?????
+    const int* g_t2_radial_before,
+    const int* g_t2_radial_after,
+    const int* g_t2_angular_before,
+    const int* g_t2_angular_after,
     const float* g_x12_radial,
     const float* g_y12_radial,
     const float* g_z12_radial,
     const float* g_x12_angular,
     const float* g_y12_angular,
     const float* g_z12_angular,
-    float* g_pe);
+    float* g_pe,
+    float* g_q_radial_trial,
+    float* g_s_angular_trial);
 
+  void compute_large_box(
+    Box& box,
+    const GPU_Vector<int>& type,
+    const GPU_Vector<double>& position,
+    GPU_Vector<double>& potential,
+    GPU_Vector<float>& q_radial,
+    GPU_Vector<float>& s_angular);
+
+  bool has_dftd3 = false;
+  
 private:
   GPU_Vector<float> nep_parameters; // parameters to be optimized
   void update_potential(float* parameters, ANN& ann);

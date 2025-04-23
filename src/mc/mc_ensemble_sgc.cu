@@ -332,9 +332,7 @@ void MC_Ensemble_SGC::compute(
   std::uniform_int_distribution<int> r1(0, group_size - 1);
 
 
-  compute_q_radial(); // *** todo ***
-  compute_s_angular(); // *** todo ***
-  save_pe_before_total(compute_pe_total()); // *** todo ***
+  nep_energy.compute_large_box();//***todo***
 
   int num_accepted = 0;
   for (int step = 0; step < num_steps_mc; ++step) {

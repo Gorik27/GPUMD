@@ -842,6 +842,142 @@ static __device__ __forceinline__ void accumulate_s(
 }
 
 template <int L>
+static __device__ __forceinline__ void
+save_s_one(float* g_s, float* s, int index)
+{
+  int s_index = L * L - 1;
+  
+  for (int n1 = 0; n1 <= L; ++n1) {
+    if (n1 == 0) {
+      g_s[index+s_index] = s[s_index++];
+    } else {
+      g_s[index+s_index] = s[s_index++];
+      g_s[index+s_index] = s[s_index++];
+    }
+  }
+}
+
+static __device__ __forceinline__ void save_s(
+  const int L_max, float* g_s, float* s, int index)
+{
+  if (L_max >= 1) {
+    save_s_one<1>(g_s, s, index);
+  }
+  if (L_max >= 2) {
+    save_s_one<2>(g_s, s, index);
+  }
+  if (L_max >= 3) {
+    save_s_one<3>(g_s, s, index);
+  }
+  if (L_max >= 4) {
+    save_s_one<4>(g_s, s, index);
+  }
+  if (L_max >= 5) {
+    save_s_one<5>(g_s, s, index);
+  }
+  if (L_max >= 6) {
+    save_s_one<6>(g_s, s, index);
+  }
+  if (L_max >= 7) {
+    save_s_one<7>(g_s, s, index);
+  }
+  if (L_max >= 8) {
+    save_s_one<8>(g_s, s, index);
+  }
+}
+
+template <int L>
+static __device__ __forceinline__ void
+sum_s_one(float* s, float* delta_s)
+{
+  int s_index = L * L - 1;
+  
+  for (int n1 = 0; n1 <= L; ++n1) {
+    if (n1 == 0) {
+      s[s_index] = s[s_index] + delta_s[s_index++];
+    } else {
+      s[s_index] = s[s_index] + delta_s[s_index++];
+      s[s_index] = s[s_index] + delta_s[s_index++];
+    }
+  }
+}
+
+static __device__ __forceinline__ void sum_s(
+  const int L_max, float* s, float* delta_s)
+{
+  if (L_max >= 1) {
+    sum_s_one<1>(s, delta_s);
+  }
+  if (L_max >= 2) {
+    sum_s_one<2>(s, delta_s);
+  }
+  if (L_max >= 3) {
+    sum_s_one<3>(s, delta_s);
+  }
+  if (L_max >= 4) {
+    sum_s_one<4>(s, delta_s);
+  }
+  if (L_max >= 5) {
+    sum_s_one<5>(s, delta_s);
+  }
+  if (L_max >= 6) {
+    sum_s_one<6>(s, delta_s);
+  }
+  if (L_max >= 7) {
+    sum_s_one<7>(s, delta_s);
+  }
+  if (L_max >= 8) {
+    sum_s_one<8>(s, delta_s);
+  }
+}
+
+
+template <int L>
+static __device__ __forceinline__ void
+load_s_one(float* g_s, float* s, int index)
+{
+  int s_index = L * L - 1;
+  
+  for (int n1 = 0; n1 <= L; ++n1) {
+    if (n1 == 0) {
+      s[s_index] = g_s[index+s_index++];
+    } else {
+      s[s_index] = g_s[index+s_index++];
+      s[s_index] = g_s[index+s_index++];
+    }
+  }
+}
+
+static __device__ __forceinline__ void load_s(
+  const int L_max, float* g_s, float* s, int index)
+{
+  if (L_max >= 1) {
+    load_s_one<1>(g_s, s, index);
+  }
+  if (L_max >= 2) {
+    load_s_one<2>(g_s, s, index);
+  }
+  if (L_max >= 3) {
+    load_s_one<3>(g_s, s, index);
+  }
+  if (L_max >= 4) {
+    load_s_one<4>(g_s, s, index);
+  }
+  if (L_max >= 5) {
+    load_s_one<5>(g_s, s, index);
+  }
+  if (L_max >= 6) {
+    load_s_one<6>(g_s, s, index);
+  }
+  if (L_max >= 7) {
+    load_s_one<7>(g_s, s, index);
+  }
+  if (L_max >= 8) {
+    load_s_one<8>(g_s, s, index);
+  }
+}
+
+template <int L>
 static __device__ __forceinline__ float find_q_one(const float* s)
 {
   const int start_index = L * L - 1;

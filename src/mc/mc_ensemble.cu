@@ -95,7 +95,7 @@ MC_Ensemble::MC_Ensemble(const char** param, int num_param)
 
   std::string potential_file_name = get_potential_file_name();
   check_is_nep(potential_file_name);
-  nep_energy.initialize(potential_file_name.c_str());
+  nep_energy.initialize(potential_file_name.c_str(), num_atoms);//***todo*** find num_atoms
 
 #ifdef DEBUG
   rng = std::mt19937(13579);
