@@ -40,7 +40,7 @@ const std::string ELEMENTS[NUM_ELEMENTS] = {
   "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg",
   "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",  "Np", "Pu"};
 
-void NEP_Energy::initialize(const char* file_potential, const int num_atoms)
+void NEP_Energy::initialize(const char* file_potential)
 {
 
   std::ifstream input(file_potential);
@@ -262,7 +262,7 @@ void NEP_Energy::initialize(const char* file_potential, const int num_atoms)
     }
     zbl.num_types = paramb.num_types;
   }
-
+  num_atoms = (N2-N1);
   nep_data.f12x.resize(num_atoms * paramb.MN_angular);
   nep_data.f12y.resize(num_atoms * paramb.MN_angular);
   nep_data.f12z.resize(num_atoms * paramb.MN_angular);
@@ -280,6 +280,12 @@ void NEP_Energy::initialize(const char* file_potential, const int num_atoms)
   nep_data.cpu_NN_angular.resize(num_atoms);
   nep_data.q_radial.resize(num_atoms * (paramb.n_max_radial + 1));
   nep_data.s_angular.resize(num_atoms * NUM_OF_ABC);
+  nep_data.q_radial_local.resize(1000 * (paramb.n_max_radial + 1));
+  nep_data.s_angular_local.resize(1000 * NUM_OF_ABC);
+  //nep_data.q_radial_trial.resize(num_atoms * (paramb.n_max_radial + 1));
+  //nep_data.s_angular_trial.resize(num_atoms * NUM_OF_ABC);
+  nep_data.q_radial_trial_local.resize(1000 * (paramb.n_max_radial + 1));
+  nep_data.s_angular_trial_local.resize(1000 * NUM_OF_ABC);
 }
 
 NEP_Energy::NEP_Energy(void)
@@ -329,6 +335,7 @@ static __global__ void find_energy_nep(
   const float* __restrict__ g_x12_angular,
   const float* __restrict__ g_y12_angular,
   const float* __restrict__ g_z12_angular,
+  float* g_delta_pe,
   float* g_pe,
   float* g_q_radial,
   float* g_s_angular,
@@ -427,7 +434,7 @@ static __global__ void find_energy_nep(
       apply_ann_one_layer(
         annmb.dim, annmb.num_neurons1, annmb.w0[t1], annmb.b0[t1], annmb.w1[t1], annmb.b1, q, F, Fp);
     }
-    g_pe[n1] = F;
+    g_delta_pe[n1] = F-g_pe[n1];
   }
 }
 
@@ -506,9 +513,8 @@ void NEP_Energy::find_energy(
   const float* g_x12_angular,
   const float* g_y12_angular,
   const float* g_z12_angular,
-  float* g_pe,
-  float* g_q_radial_trial,
-  float* g_s_angular_trial)
+  float* g_delta_pe,
+  float* g_pe)
 {
   find_energy_nep<<<(N - 1) / 64 + 1, 64>>>(
     paramb,
@@ -526,11 +532,12 @@ void NEP_Energy::find_energy(
     g_x12_angular,
     g_y12_angular,
     g_z12_angular,
+    g_delta_pe,
     g_pe,
-    nep_data.q_radial.data(),
-    nep_data.s_angular.data(),
-    g_q_radial_trial,
-    g_s_angular_trial);
+    nep_data.q_radial_local.data(),
+    nep_data.s_angular_local.data(),
+    nep_data.q_radial_trial_local.data(),
+    nep_data.s_angular_trial_local.data());
   GPU_CHECK_KERNEL
 
   /*  *** todo *** zbl support
@@ -549,6 +556,43 @@ void NEP_Energy::find_energy(
     GPU_CHECK_KERNEL
   }
   */
+}
+
+static __global__ void accept_trial_nep(
+  const int N_local,
+  const int* atom_local,
+  float* q_radial,
+  float* s_angular,
+  float* q_radial_trial,
+  float* s_angular_trial,
+  float* g_pe_before,
+  float* g_delta_pe)
+{
+  int k = blockIdx.x * blockDim.x + threadIdx.x;
+  if (k < N_local) {
+    int n1 = atom_local[k];
+    q_radial[n1] = q_radial_trial[k];
+    s_angular[n1] = s_angular_trial[k];
+    g_pe_before[n1] += g_delta_pe[k];
+  }
+}
+
+void NEP_Energy::accept_trial(
+  const int N_local,
+  const int* atom_local,
+  float* g_pe_before,
+  float* g_delta_pe)
+{
+  const int N = N2-N1;
+  accept_trial_nep<<<(N_local - 1) / 64 + 1, 64>>>(
+    N_local,
+    atom_local,
+    nep_data.q_radial.data(),
+    nep_data.s_angular.data(),
+    nep_data.q_radial_trial_local.data(),
+    nep_data.s_angular_trial_local.data(),
+    g_pe_before,
+    g_delta_pe);
 }
 
 //static __global__ void compute_and_save_q_rad_s_ang()
@@ -694,7 +738,7 @@ static __global__ void find_descriptor(
   const float* __restrict__ g_gn_radial,
   const float* __restrict__ g_gn_angular,
 #endif
-  double* g_pe,
+  float* g_pe,
   float* g_q,
   float* g_s)
 {
@@ -840,7 +884,7 @@ void NEP_Energy::compute_large_box(
   Box& box,
   const GPU_Vector<int>& type,
   const GPU_Vector<double>& position_per_atom,
-  GPU_Vector<double>& potential_per_atom,
+  GPU_Vector<float>& potential_per_atom,
   GPU_Vector<float>& q_radial,
   GPU_Vector<float>& s_angular)
 {

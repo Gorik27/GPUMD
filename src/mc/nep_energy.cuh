@@ -35,6 +35,12 @@ struct NEP_Data {
   GPU_Vector<int> cell_contents;
   GPU_Vector<float> q_radial; // per-atom radial descriptor components
   GPU_Vector<float> s_angular; // per-atom "s" part of the angular descriptor components
+  GPU_Vector<float> q_radial_local; // *** todo *** it is good to make this a pointer to global array // per-atom radial descriptor components (loacl array only for neighbors of MC swapped atom)
+  GPU_Vector<float> s_angular_local; // per-atom "s" part of the angular descriptor components (loacl array only for neighbors of MC swapped atom)
+  //GPU_Vector<float> q_radial_trial; // per-atom radial descriptor components after trial step
+  //GPU_Vector<float> s_angular_trial; // per-atom "s" part of the angular descriptor components after trial step
+  GPU_Vector<float> q_radial_trial_local; 
+  GPU_Vector<float> s_angular_trial_local;
   std::vector<int> cpu_NN_radial;
   std::vector<int> cpu_NN_angular;
 #ifdef USE_TABLE
@@ -45,7 +51,7 @@ struct NEP_Data {
 #endif
 };
 
-class NEP_Energy
+class NEP_Energy : public Potential
 {
 public:
   struct ParaMB {
@@ -106,10 +112,11 @@ public:
   ZBL zbl;
   NEP_Data nep_data;
   ExpandedBox ebox;
+  int num_atoms;
 
   NEP_Energy(void);
   ~NEP_Energy(void);
-  void initialize(const char* file_potential, const int num_atoms);
+  void initialize(const char* file_potential);
   void find_energy(
     const int N,
     const int* g_type,
@@ -124,17 +131,22 @@ public:
     const float* g_x12_angular,
     const float* g_y12_angular,
     const float* g_z12_angular,
-    float* g_pe,
-    float* g_q_radial_trial,
-    float* g_s_angular_trial);
+    float* g_delta_pe,
+    float* g_pe);
 
   void compute_large_box(
     Box& box,
     const GPU_Vector<int>& type,
     const GPU_Vector<double>& position,
-    GPU_Vector<double>& potential,
+    GPU_Vector<float>& potential,
     GPU_Vector<float>& q_radial,
     GPU_Vector<float>& s_angular);
+
+  void accept_trial(
+    const int N_local,
+    const int* atom_local,
+    float* g_pe_before,
+    float* g_delta_pe);
 
   bool has_dftd3 = false;
   

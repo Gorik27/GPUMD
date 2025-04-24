@@ -43,7 +43,8 @@ public:
 private:
   GPU_Vector<int> NN_ij;
   GPU_Vector<int> NL_ij;
-  //GPU_Vector<float> qsaved ***todo*** make 2d GPU_Vector (see cudaMallocPitch)
+  GPU_Vector<float> pe_before_local;
+  GPU_Vector<float> delta_pe;
   bool is_vcsgc = false;
   std::vector<std::string> species;
   std::vector<int> types;
