@@ -343,7 +343,6 @@ void MC_Ensemble_SGC::compute(
     grouping_method >= 0 ? groups[grouping_method].cpu_size[group_id] : atom.number_of_atoms;
   std::uniform_int_distribution<int> r1(0, group_size - 1);
 
-
   nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, pe_before, 
   nep_energy.nep_data.q_radial, nep_energy.nep_data.s_angular);// ***todo*** does I need to use pointers "*"???
   

@@ -153,4 +153,11 @@ public:
 private:
   GPU_Vector<float> nep_parameters; // parameters to be optimized
   void update_potential(float* parameters, ANN& ann);
+  void compute(
+    Box& box,
+    const GPU_Vector<int>& type,
+    const GPU_Vector<double>& position,
+    GPU_Vector<double>& potential,
+    GPU_Vector<double>& force,
+    GPU_Vector<double>& virial){};
 };

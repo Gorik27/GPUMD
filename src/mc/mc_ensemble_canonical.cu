@@ -323,7 +323,8 @@ void MC_Ensemble_Canonical::compute(
       x12_angular.data(),
       y12_angular.data(),
       z12_angular.data(),
-      pe_before.data());
+      pe_before.data(),
+      pe_before.data());//***todo*** not work!!!!!!!!!!!!!!!! it was set for compilation without errors, since I use only sgc ensemble
 
     nep_energy.find_energy(
       NN_ij_cpu,
@@ -338,7 +339,8 @@ void MC_Ensemble_Canonical::compute(
       x12_angular.data(),
       y12_angular.data(),
       z12_angular.data(),
-      pe_after.data());
+      pe_after.data(),
+      pe_before.data());//***todo***  not work!!!!!!!!!!!!!!!!
 
     std::vector<float> pe_before_cpu(NN_ij_cpu);
     std::vector<float> pe_after_cpu(NN_ij_cpu);
