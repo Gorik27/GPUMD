@@ -64,7 +64,7 @@ static void check_is_nep(std::string& potential_file_name)
   input_potential.close();
 }
 
-MC_Ensemble::MC_Ensemble(const char** param, int num_param)
+MC_Ensemble::MC_Ensemble(const char** param, int num_param, const int num_atoms)
 {
   mc_output.open("mcmd.out", std::ios::app);
   mc_output << "# ";
@@ -74,16 +74,14 @@ MC_Ensemble::MC_Ensemble(const char** param, int num_param)
   mc_output << "\n";
   mc_output << "# num_MD_steps  acceptance_ratio [species_concentrations]" << std::endl;
 
-  const int n_max = 1000;
-  const int m_max = 1000;
+  const int n_max = 300;
+  const int m_max = 300;
   NN_radial.resize(n_max);
   NN_angular.resize(m_max);
   local_type_before.resize(n_max);
   local_type_after.resize(n_max);
-  t2_radial_before.resize(n_max);
-  t2_radial_after.resize(n_max);
-  t2_angular_before.resize(m_max);
-  t2_angular_after.resize(m_max);
+  t2_radial.resize(n_max);
+  t2_angular.resize(m_max);
   x12_radial.resize(n_max);
   y12_radial.resize(n_max);
   z12_radial.resize(n_max);
@@ -95,7 +93,7 @@ MC_Ensemble::MC_Ensemble(const char** param, int num_param)
 
   std::string potential_file_name = get_potential_file_name();
   check_is_nep(potential_file_name);
-  nep_energy.initialize(potential_file_name.c_str());
+  nep_energy.initialize(potential_file_name.c_str(), num_atoms);
 
 #ifdef DEBUG
   rng = std::mt19937(13579);

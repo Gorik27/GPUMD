@@ -341,7 +341,7 @@ NEP::NEP(const char* file_potential, const int num_atoms)
   nep_data.f12z.resize(num_atoms * paramb.MN_angular);
   nep_data.NN_radial.resize(num_atoms);
   nep_data.NL_radial.resize(num_atoms * paramb.MN_radial);
-  nep_data.NN_angular.resize(num_atoms);
+   nep_data.NN_angular.resize(num_atoms);
   nep_data.NL_angular.resize(num_atoms * paramb.MN_angular);
   nep_data.Fp.resize(num_atoms * annmb.dim);
   nep_data.sum_fxyz.resize(

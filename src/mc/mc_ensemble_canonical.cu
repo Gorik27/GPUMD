@@ -23,7 +23,7 @@ The canonical ensemble for MCMD.
 
 MC_Ensemble_Canonical::MC_Ensemble_Canonical(
   const char** param, int num_param, int num_steps_mc_input)
-  : MC_Ensemble(param, num_param)
+  : MC_Ensemble(param, num_param, 0)//***todo*** 0 added to avoid errors in compilation 
 {
   num_steps_mc = num_steps_mc_input;
   NN_ij.resize(1);
@@ -284,7 +284,9 @@ void MC_Ensemble_Canonical::compute(
 
     CHECK(gpuMemset(NN_radial.data(), 0, sizeof(int) * NN_radial.size()));
     CHECK(gpuMemset(NN_angular.data(), 0, sizeof(int) * NN_angular.size()));
-    create_inputs_for_energy_calculator<<<(atom.number_of_atoms - 1) / 64 + 1, 64>>>(
+
+    //***todo*** uncoment and fix canonical ensemble!!!
+  /*   create_inputs_for_energy_calculator<<<(atom.number_of_atoms - 1) / 64 + 1, 64>>>(
       atom.number_of_atoms,
       NN_ij_cpu,
       NL_ij.data(),
@@ -309,10 +311,10 @@ void MC_Ensemble_Canonical::compute(
       y12_angular.data(),
       z12_angular.data());
     GPU_CHECK_KERNEL
-
-    nep_energy.find_energy(
+ */
+/*     nep_energy.find_energy(
       NN_ij_cpu,
-      NN_radial.data(),
+      0, //***todo*** not work!!!!!!!!!!!!!!!! it was set for compilation without errors, since I use only sgc ensemble
       NN_angular.data(),
       local_type_before.data(),
       t2_radial_before.data(),
@@ -328,7 +330,7 @@ void MC_Ensemble_Canonical::compute(
 
     nep_energy.find_energy(
       NN_ij_cpu,
-      NN_radial.data(),
+      0, //***todo*** not work!!!!!!!!!!!!!!!! it was set for compilation without errors, since I use only sgc ensemble
       NN_angular.data(),
       local_type_after.data(),
       t2_radial_after.data(),
@@ -340,7 +342,7 @@ void MC_Ensemble_Canonical::compute(
       y12_angular.data(),
       z12_angular.data(),
       pe_after.data(),
-      pe_before.data());//***todo***  not work!!!!!!!!!!!!!!!!
+      pe_before.data());//***todo***  not work!!!!!!!!!!!!!!!! */
 
     std::vector<float> pe_before_cpu(NN_ij_cpu);
     std::vector<float> pe_after_cpu(NN_ij_cpu);

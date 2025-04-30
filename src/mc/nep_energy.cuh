@@ -43,6 +43,7 @@ struct NEP_Data {
   GPU_Vector<float> s_angular_trial_local;
   std::vector<int> cpu_NN_radial;
   std::vector<int> cpu_NN_angular;
+  GPU_Vector<float> pe;
 #ifdef USE_TABLE
   GPU_Vector<float> gn_radial;   // tabulated gn_radial functions
   GPU_Vector<float> gnp_radial;  // tabulated gnp_radial functions
@@ -51,7 +52,7 @@ struct NEP_Data {
 #endif
 };
 
-class NEP_Energy : public Potential
+class NEP_Energy 
 {
 public:
   struct ParaMB {
@@ -116,31 +117,32 @@ public:
 
   NEP_Energy(void);
   ~NEP_Energy(void);
-  void initialize(const char* file_potential);
+  void initialize(const char* file_potential, const int num_atoms);
   void find_energy(
-    const int N,
-    const int* g_type,
-    // ?????? local_type_before.data(), ?????
-    const int* g_t2_radial_before,
-    const int* g_t2_radial_after,
-    const int* g_t2_angular_before,
-    const int* g_t2_angular_after,
-    const float* g_x12_radial,
-    const float* g_y12_radial,
-    const float* g_z12_radial,
-    const float* g_x12_angular,
-    const float* g_y12_angular,
-    const float* g_z12_angular,
-    float* g_delta_pe,
-    float* g_pe);
+      const int N,
+      const int i,
+      const int* g_NN_angular,
+      const int type_i,
+      const int type_j,
+      const int* g_t2_radial,
+      const int* g_t2_angular,
+      const float* g_x12_radial,
+      const float* g_y12_radial,
+      const float* g_z12_radial,
+      const float* g_x12_angular,
+      const float* g_y12_angular,
+      const float* g_z12_angular,
+      float* g_delta_pe,
+      float* g_pe,
+      const int dpe_size);
 
   void compute_large_box(
     Box& box,
     const GPU_Vector<int>& type,
     const GPU_Vector<double>& position,
-    GPU_Vector<float>& potential,
-    GPU_Vector<float>& q_radial,
-    GPU_Vector<float>& s_angular);
+    float* potential,
+    float* q_radial,
+    float* s_angular);
 
   void accept_trial(
     const int N_local,

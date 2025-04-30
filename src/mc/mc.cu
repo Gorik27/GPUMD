@@ -322,11 +322,11 @@ void MC::parse_mc(const char** param, int num_param, std::vector<Group>& groups,
   } else if (mc_ensemble_type == 1) {
     check_species_sgc(groups, atom);
     mc_ensemble.reset(new MC_Ensemble_SGC(
-      param, num_param, num_steps_mc, false, species, types, num_atoms_species, mu_or_phi, kappa));
+      atom.number_of_atoms, param, num_param, num_steps_mc, false, species, types, num_atoms_species, mu_or_phi, kappa));
   } else if (mc_ensemble_type == 2) {
     check_species_sgc(groups, atom);
     mc_ensemble.reset(new MC_Ensemble_SGC(
-      param, num_param, num_steps_mc, true, species, types, num_atoms_species, mu_or_phi, kappa));
+      atom.number_of_atoms, param, num_param, num_steps_mc, true, species, types, num_atoms_species, mu_or_phi, kappa));
   }
 
   do_mcmd = true;

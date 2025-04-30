@@ -19,7 +19,10 @@
 class MC_Ensemble_SGC : public MC_Ensemble
 {
 public:
+  int num_atoms;
+
   MC_Ensemble_SGC(
+    const int num_atoms,
     const char** param,
     int num_param,
     int num_steps_mc,
@@ -43,6 +46,7 @@ public:
 private:
   GPU_Vector<int> NN_ij;
   GPU_Vector<int> NL_ij;
+  GPU_Vector<int> NN_angular_i;
   GPU_Vector<float> pe_before_local;
   GPU_Vector<float> delta_pe;
   bool is_vcsgc = false;

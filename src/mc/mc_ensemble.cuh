@@ -27,7 +27,7 @@
 class MC_Ensemble
 {
 public:
-  MC_Ensemble(const char** param, int num_param);
+  MC_Ensemble(const char** param, int num_param, const int num_atoms);
   virtual ~MC_Ensemble(void);
 
   virtual void compute(
@@ -52,10 +52,8 @@ protected:
   GPU_Vector<int> type_after;
   GPU_Vector<int> local_type_before;
   GPU_Vector<int> local_type_after;
-  GPU_Vector<int> t2_radial_before;
-  GPU_Vector<int> t2_radial_after;
-  GPU_Vector<int> t2_angular_before;
-  GPU_Vector<int> t2_angular_after;
+  GPU_Vector<int> t2_radial;
+  GPU_Vector<int> t2_angular;
   GPU_Vector<float> x12_radial;
   GPU_Vector<float> y12_radial;
   GPU_Vector<float> z12_radial;
