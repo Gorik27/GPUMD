@@ -23,7 +23,7 @@ CFLAGS = -O3 $(CUDA_ARCH)
 else # For linux
 CFLAGS = -std=c++14 -O3 $(CUDA_ARCH) -DDEBUG
 gflag = -g #-G
-nep_gflag = -G
+nep_gflag = -G -O0
 endif
 INC = -I./
 LDFLAGS = 

@@ -263,29 +263,21 @@ void NEP_Energy::initialize(const char* file_potential, const int num_atoms)
     zbl.num_types = paramb.num_types;
   }
   
-  //nep_data.f12x.resize(num_atoms * paramb.MN_angular);// ***todo*** remove
-  //nep_data.f12y.resize(num_atoms * paramb.MN_angular);// ***todo*** remove
-  //nep_data.f12z.resize(num_atoms * paramb.MN_angular);// ***todo*** remove
   nep_data.NN_radial.resize(num_atoms);
   nep_data.NL_radial.resize(num_atoms * paramb.MN_radial);
   nep_data.NN_angular.resize(num_atoms);
   nep_data.NL_angular.resize(num_atoms * paramb.MN_angular);
-  //nep_data.Fp.resize(num_atoms * annmb.dim);
-  //nep_data.sum_fxyz.resize(
-  //  num_atoms * (paramb.n_max_angular + 1) * ((paramb.L_max + 1) * (paramb.L_max + 1) - 1));// ***todo*** remove
   nep_data.cell_count.resize(num_atoms);
   nep_data.cell_count_sum.resize(num_atoms);
   nep_data.cell_contents.resize(num_atoms);
   nep_data.cpu_NN_radial.resize(num_atoms);
   nep_data.cpu_NN_angular.resize(num_atoms);
   nep_data.q_radial.resize(num_atoms * (paramb.n_max_radial + 1));
-  nep_data.s_angular.resize(num_atoms * NUM_OF_ABC);
+  nep_data.s_angular.resize(num_atoms * (paramb.n_max_angular + 1) * NUM_OF_ABC);
   nep_data.q_radial_local.resize(1000 * (paramb.n_max_radial + 1));
-  nep_data.s_angular_local.resize(1000 * NUM_OF_ABC);
-  //nep_data.q_radial_trial.resize(num_atoms * (paramb.n_max_radial + 1));
-  //nep_data.s_angular_trial.resize(num_atoms * NUM_OF_ABC);
+  nep_data.s_angular_local.resize(1000 * (paramb.n_max_angular + 1) * NUM_OF_ABC);
   nep_data.q_radial_trial_local.resize(1000 * (paramb.n_max_radial + 1));
-  nep_data.s_angular_trial_local.resize(1000 * NUM_OF_ABC);
+  nep_data.s_angular_trial_local.resize(1000 * (paramb.n_max_angular + 1) * NUM_OF_ABC);
   nep_data.pe.resize(num_atoms);
 }
 
@@ -375,15 +367,17 @@ static __global__ void find_energy_nep(
         c_index_after += t1_after * paramb.num_types + t2;
         dgn12 += fn12[k] * (annmb.c[c_index_after]-annmb.c[c_index_before]);
       }
-      q[n] = g_q_radial[n] + dgn12;
-      g_q_radial_trial[n] = q[n];//save trial to global memory (on GPU)
+      int index = n1*(paramb.n_max_radial+1) + n;
+      q[n] = g_q_radial[index] + dgn12;
+      g_q_radial_trial[index] = q[n];//save trial to global memory (on GPU)
     }
     
     
     // get angular descriptors
     for (int n = 0; n <= paramb.n_max_angular; ++n) {
       float s[NUM_OF_ABC] = {0.0f}; 
-      load_s(paramb.L_max, s, g_s_angular, n);
+      int index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
+      load_s(paramb.L_max, g_s_angular, s, index);
       float delta_s[NUM_OF_ABC] = {0.0f};
       float r12[3] = {g_x12_angular[n1], g_y12_angular[n1], g_z12_angular[n1]};
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
@@ -417,7 +411,6 @@ static __global__ void find_energy_nep(
         accumulate_s(paramb.L_max, d12, r12[0], r12[1], r12[2], dgn12, delta_s);
         sum_s(paramb.L_max, s, delta_s);
         find_q(paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
-        int index = n*NUM_OF_ABC;
         save_s(paramb.L_max, g_s_angular_trial, s, index);//save trial to global memory (on GPU)
       }
     }
@@ -437,6 +430,7 @@ static __global__ void find_energy_nep(
         annmb.dim, annmb.num_neurons1, annmb.w0[t1_after], annmb.b0[t1_after], annmb.w1[t1_after], annmb.b1, q, F, Fp);
     }
     g_delta_pe[n1] = F-g_pe[n1];
+    printf("energy_nep %d; %.6f\n", n1, F);
   }
 }
 
@@ -458,8 +452,7 @@ static __global__ void find_i_energy_nep(
   const float* __restrict__ g_x12_angular,
   const float* __restrict__ g_y12_angular,
   const float* __restrict__ g_z12_angular,
-  float* g_delta_pe,
-  const int dpe_size)
+  float* g_delta_pe)
 {
   float q_after[MAX_DIM] = {0.0f};
   float q_before[MAX_DIM] = {0.0f};
@@ -565,7 +558,7 @@ static __global__ void find_i_energy_nep(
     apply_ann_one_layer(
       annmb.dim, annmb.num_neurons1, annmb.w0[t1_after], annmb.b0[t1_after], annmb.w1[t1_after], annmb.b1, q_after, F_after, Fp);
   }
-  g_delta_pe[dpe_size-1] = F_after-F_before;
+  g_delta_pe[N] = F_after-F_before;
   
 }
 
@@ -645,9 +638,9 @@ void NEP_Energy::find_energy(
   const float* g_y12_angular,
   const float* g_z12_angular,
   float* g_delta_pe,
-  float* g_pe,
-  const int dpe_size)
+  float* g_pe)
 {
+  printf("sequence %d\n", N);
   find_energy_nep<<<(N - 1) / 64 + 1, 64>>>(
     paramb,
     annmb,
@@ -687,8 +680,7 @@ void NEP_Energy::find_energy(
     g_x12_angular,
     g_y12_angular,
     g_z12_angular,
-    g_delta_pe,
-    dpe_size);
+    g_delta_pe);
 
   /*  *** todo *** zbl support
   if (zbl.enabled) {
@@ -949,8 +941,10 @@ static __global__ void find_descriptor(
       }
 #endif
     }
+    int index;
     for (int n = 0; n <= paramb.n_max_radial; ++n) {
-        g_q[n] = q[n]; // save to global memory (on GPU)
+        index = n1*(paramb.n_max_radial+1) + n;
+        g_q[index] = q[n]; // save to global memory (on GPU)
       }
 
     // get angular descriptors
@@ -1000,7 +994,7 @@ static __global__ void find_descriptor(
         accumulate_s(paramb.L_max, d12, x12, y12, z12, gn12, s);
 #endif
       }
-      int index = n*NUM_OF_ABC;
+      int index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
       save_s(paramb.L_max, g_s, s, index);// save to global memory (on GPU)
       find_q(
         paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
@@ -1058,8 +1052,8 @@ void NEP_Energy::compute_large_box(
   find_neighbor_list_large_box<<<grid_size, BLOCK_SIZE>>>(
     paramb,
     N,
-    N,
     0,
+    N,
     num_bins[0],
     num_bins[1],
     num_bins[2],
@@ -1094,8 +1088,8 @@ void NEP_Energy::compute_large_box(
     paramb,
     annmb,
     N,
-    N,
     0,
+    N,
     box,
     nep_data.NN_radial.data(),
     nep_data.NL_radial.data(),

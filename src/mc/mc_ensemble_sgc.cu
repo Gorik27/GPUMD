@@ -28,6 +28,7 @@ integration across phase boundaries, Phys. Rev. B 86, 134204 (2012).
 
 #include "mc_ensemble_sgc.cuh"
 #include "utilities/gpu_macro.cuh"
+#include "utilities/nep_utilities.cuh"
 #include <map>
 #include <cstring>
 
@@ -233,6 +234,7 @@ static __global__ void get_neighbors_of_i(
 }
 
 static __global__ void create_inputs_for_energy_calculator(
+  NEP_Energy::ParaMB paramb,
   const int N_local,
   const int i,
   const int* atom_local,
@@ -274,7 +276,13 @@ static __global__ void create_inputs_for_energy_calculator(
         g_x12_radial[k] = float(x12);
         g_y12_radial[k] = float(y12);
         g_z12_radial[k] = float(z12);
-        g_q_radial_local[k] = g_q_radial[n1];
+        int index, index_local;
+        for (int n = 0; n <= paramb.n_max_radial; ++n){
+          index_local = k*(paramb.n_max_radial+1) + n;
+          index = n1*(paramb.n_max_radial+1) + n;
+          g_q_radial_local[index_local] = g_q_radial[index];
+        }
+        
 
       }
       if (distance_square < rc_angular_square) {
@@ -283,7 +291,12 @@ static __global__ void create_inputs_for_energy_calculator(
         g_x12_angular[k] = float(x12);
         g_y12_angular[k] = float(y12);
         g_z12_angular[k] = float(z12);
-        g_s_angular_local[k] = g_s_angular[n1];
+        int index, index_local;
+        for (int n = 0; n <= paramb.n_max_angular; ++n){
+          index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
+          index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
+          save_s_local(paramb.L_max, g_s_angular, g_s_angular_local, index, index_local);
+        }
       }
     }
   }
@@ -353,9 +366,9 @@ void MC_Ensemble_SGC::compute(
   for (int n = 0; n < atom.number_of_atoms; ++n) {
     pe_before_total += pe_before_cpu[n];
   }
-  std::cout << pe_before_total << std::endl;// *** error *** nep_energy.nep_data.pe turns out to be zero!!!!!!!!!!
-
+  
   int num_accepted = 0;
+  mc_output << "MC step" << std::endl; // ***todo*** debug
   for (int step = 0; step < num_steps_mc; ++step) {
     int i = -1;
     int type_i = -1;
@@ -409,6 +422,7 @@ void MC_Ensemble_SGC::compute(
 
     CHECK(gpuMemset(NN_angular_i.data(), 0, sizeof(int)));
     create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
+      nep_energy.paramb,
       NN_ij_cpu,
       i,
       NL_ij.data(),
@@ -449,20 +463,19 @@ void MC_Ensemble_SGC::compute(
       y12_angular.data(),
       z12_angular.data(),
       delta_pe.data(),
-      pe_before_local.data(),
-      delta_pe.size());
+      pe_before_local.data());
     
     
-    std::vector<float> delta_pe_cpu(NN_ij_cpu);
-    delta_pe.copy_to_host(delta_pe_cpu.data(), NN_ij_cpu);
+    std::vector<float> delta_pe_cpu(NN_ij_cpu+1);
+    delta_pe.copy_to_host(delta_pe_cpu.data(), NN_ij_cpu+1);
 
     float energy_difference = 0.0f;
-    for (int n = 0; n < NN_ij_cpu; ++n) {
+    for (int n = 0; n < NN_ij_cpu+1; ++n) {
       energy_difference += delta_pe_cpu[n];
     }
-    energy_difference += delta_pe_cpu[delta_pe.size()-1];//energy if the swapped atoms
+    //energy_difference += delta_pe_cpu[NN_ij_cpu];//energy if the swapped atoms
     
-    mc_output << i << "; " << type_j << "; delta E: " << energy_difference << std::endl;
+    mc_output << i << "; " << type_i << "; " << type_j << "; " << energy_difference << std::endl;
 
     if (!is_vcsgc) {
       energy_difference += mu_or_phi[index_new_species] - mu_or_phi[index_old_species];

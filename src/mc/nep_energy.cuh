@@ -133,8 +133,7 @@ public:
       const float* g_y12_angular,
       const float* g_z12_angular,
       float* g_delta_pe,
-      float* g_pe,
-      const int dpe_size);
+      float* g_pe);
 
   void compute_large_box(
     Box& box,

@@ -897,6 +897,51 @@ static __device__ __forceinline__ void save_s(
 
 template <int L>
 static __device__ __forceinline__ void
+save_s_local_one(float* s_global, float* s_local, int index, int index_local)
+{
+  int s_index = L * L - 1;
+  
+  for (int n1 = 0; n1 <= L; ++n1) {
+    if (n1 == 0) {
+      s_local[index_local + s_index] = s_global[index + s_index++];
+    } else {
+      s_local[index_local + s_index] = s_global[index + s_index++];
+      s_local[index_local + s_index] = s_global[index + s_index++];
+    }
+  }
+}
+
+static __device__ __forceinline__ void save_s_local(
+  const int L_max, float* s_global, float* s_local, int index, int index_local)
+{
+  if (L_max >= 1) {
+    save_s_local_one<1>(s_global, s_local, index, index_local);
+  }
+  if (L_max >= 2) {
+    save_s_local_one<2>(s_global, s_local, index, index_local);
+  }
+  if (L_max >= 3) {
+    save_s_local_one<3>(s_global, s_local, index, index_local);
+  }
+  if (L_max >= 4) {
+    save_s_local_one<4>(s_global, s_local, index, index_local);
+  }
+  if (L_max >= 5) {
+    save_s_local_one<5>(s_global, s_local, index, index_local);
+  }
+  if (L_max >= 6) {
+    save_s_local_one<6>(s_global, s_local, index, index_local);
+  }
+  if (L_max >= 7) {
+    save_s_local_one<7>(s_global, s_local, index, index_local);
+  }
+  if (L_max >= 8) {
+    save_s_local_one<8>(s_global, s_local, index, index_local);
+  }
+}
+
+template <int L>
+static __device__ __forceinline__ void
 sum_s_one(float* s, float* delta_s)
 {
   int s_index = L * L - 1;
