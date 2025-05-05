@@ -226,9 +226,9 @@ static __global__ void get_neighbors_of_i(
     float distance_square_i = float(x0i * x0i + y0i * y0i + z0i * z0i);
 
     if (distance_square_i < rc_radial_square) {
-      g_pe_before_local[*g_NN_i] = g_pe_before[n]; 
-      g_NL_i[atomicAdd(g_NN_i, 1)] = n;
-      
+      int index = atomicAdd(g_NN_i, 1);
+      g_pe_before_local[index] = g_pe_before[n]; 
+      g_NL_i[index] = n;
     }
   }
 }

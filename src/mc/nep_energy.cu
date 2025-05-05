@@ -430,7 +430,7 @@ static __global__ void find_energy_nep(
         annmb.dim, annmb.num_neurons1, annmb.w0[t1_after], annmb.b0[t1_after], annmb.w1[t1_after], annmb.b1, q, F, Fp);
     }
     g_delta_pe[n1] = F-g_pe[n1];
-    printf("energy_nep %d; %.6f\n", n1, F);
+    printf("%d; %.6f, %.6f\n", n1, F, g_pe[n1]);
   }
 }
 
