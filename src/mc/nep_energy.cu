@@ -415,11 +415,12 @@ static __global__ void find_energy_nep(
       }
     }
 
-    // nomalize descriptor
+    // normalize descriptor
     for (int d = 0; d < annmb.dim; ++d) {
+      //printf("%.6f ", q[d]); threads prints simultanously
       q[d] = q[d] * paramb.q_scaler[d];
     }
-
+    //printf("\n");
     // get energy and energy gradient
     float F = 0.0f, Fp[MAX_DIM] = {0.0f};
     if (paramb.version == 5) {
@@ -526,8 +527,8 @@ static __global__ void find_i_energy_nep(
         for (int k = 0; k <= paramb.basis_size_angular; ++k) {
           int c_index_before = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
           int c_index_after = c_index_before;
-          c_index_before += t1_before * paramb.num_types + t2 + paramb.num_c_radial;
-          c_index_after += t1_after * paramb.num_types + t2 + paramb.num_c_radial;
+          c_index_before += t2 * paramb.num_types + t1_before + paramb.num_c_radial;
+          c_index_after += t2 * paramb.num_types + t1_after + paramb.num_c_radial;
           gn12_before += fn12[k] * annmb.c[c_index_before];
           gn12_after += fn12[k] * annmb.c[c_index_after];
         }
@@ -662,6 +663,14 @@ void NEP_Energy::find_energy(
     nep_data.q_radial_trial_local.data(),
     nep_data.s_angular_trial_local.data());
   GPU_CHECK_KERNEL
+
+/*   for (int i = 0; i < N; ++i){
+    nep_data.q_radial_local.data()[i],
+    nep_data.s_angular_local.data(),
+    nep_data.q_radial_trial_local.data(),
+    nep_data.s_angular_trial_local.data()
+  }  */
+  
 
   find_i_energy_nep<<<1,1>>>(
     paramb,
