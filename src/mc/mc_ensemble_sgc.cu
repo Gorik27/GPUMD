@@ -293,9 +293,11 @@ static __global__ void create_inputs_for_energy_calculator(
         g_z12_angular[k] = float(z12);
         int index, index_local;
         for (int n = 0; n <= paramb.n_max_angular; ++n){
-          index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
-          index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
-          save_s_local(paramb.L_max, g_s_angular, g_s_angular_local, index, index_local);
+          for (int l = 0; l<NUM_OF_ABC; ++l){
+            index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+            index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+            g_s_angular_local[index_local] = g_s_angular[index];
+          }
         }
       }
     }
@@ -355,8 +357,13 @@ void MC_Ensemble_SGC::compute(
     grouping_method >= 0 ? groups[grouping_method].cpu_size[group_id] : atom.number_of_atoms;
   std::uniform_int_distribution<int> r1(0, group_size - 1);
 
-  nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
-  nep_energy.nep_data.q_radial.data(), nep_energy.nep_data.s_angular.data());// ***todo*** does I need to use pointers "*"???
+  nep_energy.compute_large_box(
+    box, 
+    atom.type, 
+    atom.position_per_atom, 
+    nep_energy.nep_data.pe.data(), 
+    nep_energy.nep_data.q_radial.data(), 
+    nep_energy.nep_data.s_angular.data());// ***todo*** does I need to use pointers "*"???
   
   std::vector<float> pe_before_cpu(atom.number_of_atoms);
 
@@ -406,19 +413,6 @@ void MC_Ensemble_SGC::compute(
 
     int NN_ij_cpu;
     NN_ij.copy_to_host(&NN_ij_cpu);
-
-/*     get_types<<<(atom.number_of_atoms - 1) / 64 + 1, 64>>>(
-      atom.number_of_atoms, i, type_j, atom.type.data(), type.data());
-    GPU_CHECK_KERNEL */
-
-/*     find_local_types<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
-      NN_ij_cpu,
-      NL_ij.data(),
-      type_before.data(),
-      type_after.data(),
-      local_type_before.data(),
-      local_type_after.data());
-    GPU_CHECK_KERNEL */
 
     CHECK(gpuMemset(NN_angular_i.data(), 0, sizeof(int)));
     create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
@@ -490,6 +484,81 @@ void MC_Ensemble_SGC::compute(
     float random_number = r2(rng);
     float probability = exp(-energy_difference / (K_B * temperature));
 
+       /* 
+  descriptor's debugg output
+ */
+      nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
+                                    nep_energy.nep_data.q_radial.data(), nep_energy.nep_data.s_angular.data());
+
+      CHECK(gpuMemset(NN_angular_i.data(), 0, sizeof(int)));
+    create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
+      nep_energy.paramb,
+      NN_ij_cpu,
+      i,
+      NL_ij.data(),
+      box,
+      nep_energy.paramb.rc_radial * nep_energy.paramb.rc_radial,
+      nep_energy.paramb.rc_angular * nep_energy.paramb.rc_angular,
+      atom.position_per_atom.data(),
+      atom.position_per_atom.data() + atom.number_of_atoms, 
+      atom.position_per_atom.data() + atom.number_of_atoms * 2, 
+      atom.type.data(),
+      NN_angular_i.data(),
+      t2_radial.data(),
+      t2_angular.data(),
+      x12_radial.data(),
+      y12_radial.data(),
+      z12_radial.data(),
+      x12_angular.data(),
+      y12_angular.data(),
+      z12_angular.data(),
+      nep_energy.nep_data.q_radial.data(),
+      nep_energy.nep_data.s_angular.data(),
+      nep_energy.nep_data.q_radial_local.data(),
+      nep_energy.nep_data.s_angular_local.data());
+    GPU_CHECK_KERNEL
+
+
+  std::vector<float> q_rad(NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
+  nep_energy.nep_data.q_radial_local.copy_to_host(q_rad.data(), NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
+  std::vector<float> q_rad_t(NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
+  nep_energy.nep_data.q_radial_trial_local.copy_to_host(q_rad_t.data(), NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
+  printf("radial\n");
+  for (int i = 0; i < NN_ij_cpu; ++i){
+    for (int j = 0; j <= nep_energy.paramb.n_max_radial; ++j){
+      int index = i*(nep_energy.paramb.n_max_radial+1) + j;
+      printf("%d %d %.6f %.6f\n", 
+      i,
+      j,
+      q_rad.data()[index],
+      q_rad_t.data()[index]);
+    }
+  } 
+  const int NUM_ABC = 24;
+  std::vector<float> s(NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
+  nep_energy.nep_data.s_angular_local.copy_to_host(s.data(), NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
+  std::vector<float> s_t(NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
+  nep_energy.nep_data.s_angular_trial_local.copy_to_host(s_t.data(), NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
+  printf("angular\n");
+  for (int i = 0; i < NN_ij_cpu; ++i){
+    for (int j = 0; j <= nep_energy.paramb.n_max_angular; ++j){
+      for (int k = 0; k<=NUM_ABC; ++k){
+        int index = i*(nep_energy.paramb.n_max_angular+1)*NUM_ABC + j*NUM_ABC + k;
+        printf("%d %d %d %.6f %.6f\n", 
+        i,
+        j,
+        k,
+        s.data()[index],
+        s_t.data()[index]);
+      }
+    } 
+  }
+  /* 
+  end of descriptor's debugg output
+ */
+      // ***todo*** only for debugging!!!!!!
+  
+
     if (random_number < probability) {
       ++num_accepted;
 
@@ -513,11 +582,13 @@ void MC_Ensemble_SGC::compute(
         atom.velocity_per_atom.data() + atom.number_of_atoms,
         atom.velocity_per_atom.data() + atom.number_of_atoms * 2);
 
+ 
       nep_energy.accept_trial(
         NN_ij_cpu, 
         NL_ij.data(),
         nep_energy.nep_data.pe.data(),
-        delta_pe.data());
+        delta_pe.data(),
+        i);
     }
   }
 

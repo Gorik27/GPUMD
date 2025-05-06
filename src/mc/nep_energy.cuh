@@ -147,7 +147,8 @@ public:
     const int N_local,
     const int* atom_local,
     float* g_pe_before,
-    float* g_delta_pe);
+    float* g_delta_pe,
+    const int i);
 
   bool has_dftd3 = false;
   

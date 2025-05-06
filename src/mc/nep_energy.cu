@@ -377,7 +377,10 @@ static __global__ void find_energy_nep(
     for (int n = 0; n <= paramb.n_max_angular; ++n) {
       float s[NUM_OF_ABC] = {0.0f}; 
       int index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
-      load_s(paramb.L_max, g_s_angular, s, index);
+      for (int l = 0; l<NUM_OF_ABC; ++l){
+          int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          s[l] = g_s_angular[index_local];
+      }
       float delta_s[NUM_OF_ABC] = {0.0f};
       float r12[3] = {g_x12_angular[n1], g_y12_angular[n1], g_z12_angular[n1]};
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
@@ -409,9 +412,14 @@ static __global__ void find_energy_nep(
           dgn12 += fn12[k] * (annmb.c[c_index_after] - annmb.c[c_index_before]);
         }
         accumulate_s(paramb.L_max, d12, r12[0], r12[1], r12[2], dgn12, delta_s);
-        sum_s(paramb.L_max, s, delta_s);
+        for (int l = 0; l<NUM_OF_ABC; ++l){
+          s[l] = s[l] + delta_s[l];
+        }
         find_q(paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
-        save_s(paramb.L_max, g_s_angular_trial, s, index);//save trial to global memory (on GPU)
+        for (int l = 0; l<NUM_OF_ABC; ++l){
+          int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          g_s_angular_trial[index_local] = s[l];//save trial to global memory (on GPU)
+        }
       }
     }
 
@@ -425,10 +433,10 @@ static __global__ void find_energy_nep(
     float F = 0.0f, Fp[MAX_DIM] = {0.0f};
     if (paramb.version == 5) {
       apply_ann_one_layer_nep5(
-        annmb.dim, annmb.num_neurons1, annmb.w0[t1_after], annmb.b0[t1_after], annmb.w1[t1_after], annmb.b1, q, F, Fp);
+        annmb.dim, annmb.num_neurons1, annmb.w0[t2], annmb.b0[t2], annmb.w1[t2], annmb.b1, q, F, Fp);
     } else {
       apply_ann_one_layer(
-        annmb.dim, annmb.num_neurons1, annmb.w0[t1_after], annmb.b0[t1_after], annmb.w1[t1_after], annmb.b1, q, F, Fp);
+        annmb.dim, annmb.num_neurons1, annmb.w0[t2], annmb.b0[t2], annmb.w1[t2], annmb.b1, q, F, Fp);
     }
     g_delta_pe[n1] = F-g_pe[n1];
     printf("%d; %.6f, %.6f\n", n1, F, g_pe[n1]);
@@ -664,14 +672,6 @@ void NEP_Energy::find_energy(
     nep_data.s_angular_trial_local.data());
   GPU_CHECK_KERNEL
 
-/*   for (int i = 0; i < N; ++i){
-    nep_data.q_radial_local.data()[i],
-    nep_data.s_angular_local.data(),
-    nep_data.q_radial_trial_local.data(),
-    nep_data.s_angular_trial_local.data()
-  }  */
-  
-
   find_i_energy_nep<<<1,1>>>(
     paramb,
     annmb,
@@ -710,6 +710,7 @@ void NEP_Energy::find_energy(
 }
 
 static __global__ void accept_trial_nep(
+  NEP_Energy::ParaMB paramb,
   const int N_local,
   const int* atom_local,
   float* q_radial,
@@ -717,14 +718,28 @@ static __global__ void accept_trial_nep(
   float* q_radial_trial,
   float* s_angular_trial,
   float* g_pe_before,
-  float* g_delta_pe)
+  float* g_delta_pe,
+  const int i)
 {
   int k = blockIdx.x * blockDim.x + threadIdx.x;
   if (k < N_local) {
     int n1 = atom_local[k];
-    q_radial[n1] = q_radial_trial[k];
-    s_angular[n1] = s_angular_trial[k];
+    for (int n = 0; n<=paramb.n_max_radial; ++n){
+      int index_local = k*(paramb.n_max_radial+1) + n;
+      int index = n1*(paramb.n_max_radial+1) + n;
+      q_radial[index] = q_radial_trial[index_local];
+    }
+    for (int n = 0; n<=paramb.n_max_angular; ++n){
+      for (int l = 0; l<NUM_OF_ABC; ++l){
+        int index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+        int index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+        s_angular[index] = s_angular_trial[index_local];
+      }
+    }
     g_pe_before[n1] += g_delta_pe[k];
+  }
+  if (k == N_local){
+    g_pe_before[i] += g_delta_pe[k];
   }
 }
 
@@ -732,9 +747,11 @@ void NEP_Energy::accept_trial(
   const int N_local,
   const int* atom_local,
   float* g_pe_before,
-  float* g_delta_pe)
+  float* g_delta_pe,
+  const int i)
 {
-  accept_trial_nep<<<(N_local - 1) / 64 + 1, 64>>>(
+  accept_trial_nep<<<(N_local+1 - 1) / 64 + 1, 64>>>(
+    NEP_Energy::paramb,
     N_local,
     atom_local,
     nep_data.q_radial.data(),
@@ -742,7 +759,8 @@ void NEP_Energy::accept_trial(
     nep_data.q_radial_trial_local.data(),
     nep_data.s_angular_trial_local.data(),
     g_pe_before,
-    g_delta_pe);
+    g_delta_pe,
+    i);
 }
 
 //static __global__ void compute_and_save_q_rad_s_ang()
@@ -1003,8 +1021,12 @@ static __global__ void find_descriptor(
         accumulate_s(paramb.L_max, d12, x12, y12, z12, gn12, s);
 #endif
       }
-      int index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
-      save_s(paramb.L_max, g_s, s, index);// save to global memory (on GPU)
+      int index;
+      for (int l = 0; l<NUM_OF_ABC; ++l){
+        index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+        g_s[index] = s[l];
+      }
+      //save_s(paramb.L_max, g_s, s, index);// save to global memory (on GPU)
       find_q(
         paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
     }
@@ -1080,9 +1102,6 @@ void NEP_Energy::compute_large_box(
     nep_data.NL_angular.data());
   GPU_CHECK_KERNEL
 
-
-  //nep_data.NN_radial.copy_to_host(nep_data.cpu_NN_radial.data());
-  //nep_data.NN_angular.copy_to_host(nep_data.cpu_NN_angular.data());
 
   gpu_sort_neighbor_list<<<N, paramb.MN_radial, paramb.MN_radial * sizeof(int)>>>(
     N, nep_data.NN_radial.data(), nep_data.NL_radial.data());
