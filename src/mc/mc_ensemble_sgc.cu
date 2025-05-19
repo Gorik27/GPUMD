@@ -214,7 +214,7 @@ static __global__ void get_neighbors_of_i(
   float* g_pe_before_local)
 {
   int n = blockIdx.x * blockDim.x + threadIdx.x;
-  if (n < N) {
+  if (n < N && n!=i) {
     double x0 = g_x[n];
     double y0 = g_y[n];
     double z0 = g_z[n];
@@ -276,31 +276,38 @@ static __global__ void create_inputs_for_energy_calculator(
         g_x12_radial[k] = float(x12);
         g_y12_radial[k] = float(y12);
         g_z12_radial[k] = float(z12);
-        int index, index_local;
+        
         for (int n = 0; n <= paramb.n_max_radial; ++n){
+          int index, index_local;
           index_local = k*(paramb.n_max_radial+1) + n;
           index = n1*(paramb.n_max_radial+1) + n;
           g_q_radial_local[index_local] = g_q_radial[index];
         }
         
-
-      }
-      if (distance_square < rc_angular_square) {
-        atomicAdd(g_NN_angular, 1);
-        g_t2_angular[k] = g_type[n1];
-        g_x12_angular[k] = float(x12);
-        g_y12_angular[k] = float(y12);
-        g_z12_angular[k] = float(z12);
-        int index, index_local;
         for (int n = 0; n <= paramb.n_max_angular; ++n){
           for (int l = 0; l<NUM_OF_ABC; ++l){
+            int index, index_local;
             index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
             index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
             g_s_angular_local[index_local] = g_s_angular[index];
           }
         }
       }
+      else {
+        printf("Assertion ERROR!!! non neighbor in the NL");
+      }
+
+      if (distance_square < rc_angular_square) {
+        atomicAdd(g_NN_angular, 1);
+        g_t2_angular[k] = g_type[n1];
+        g_x12_angular[k] = float(x12);
+        g_y12_angular[k] = float(y12);
+        g_z12_angular[k] = float(z12);
+      }
     }
+  else{
+    printf("Assertion ERROR!!! i (local %d) atom in the NL", k);
+  }
   }
 }
 
@@ -363,7 +370,7 @@ void MC_Ensemble_SGC::compute(
     atom.position_per_atom, 
     nep_energy.nep_data.pe.data(), 
     nep_energy.nep_data.q_radial.data(), 
-    nep_energy.nep_data.s_angular.data());// ***todo*** does I need to use pointers "*"???
+    nep_energy.nep_data.s_angular.data());
   
   std::vector<float> pe_before_cpu(atom.number_of_atoms);
 
@@ -484,13 +491,36 @@ void MC_Ensemble_SGC::compute(
     float random_number = r2(rng);
     float probability = exp(-energy_difference / (K_B * temperature));
 
-       /* 
+    if (random_number < probability) {
+      ++num_accepted;
+
+      ++num_atoms_species[index_new_species];
+      --num_atoms_species[index_old_species];
+
+      atom.cpu_type[i] = type_j;
+      atom.cpu_atom_symbol[i] = species[index_new_species];
+      double mass_old = atom.cpu_mass[i];
+      double mass_new = MASS_TABLE.at(species[index_new_species]);
+      atom.cpu_mass[i] = mass_new;
+
+      gpu_flip<<<1, 1>>>(
+        i,
+        type_j,
+        mass_new,
+        mass_old / mass_new,
+        atom.type.data(),
+        atom.mass.data(),
+        atom.velocity_per_atom.data(),
+        atom.velocity_per_atom.data() + atom.number_of_atoms,
+        atom.velocity_per_atom.data() + atom.number_of_atoms * 2);
+
+          /* 
   descriptor's debugg output
  */
-      nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
-                                    nep_energy.nep_data.q_radial.data(), nep_energy.nep_data.s_angular.data());
-
-      CHECK(gpuMemset(NN_angular_i.data(), 0, sizeof(int)));
+    nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
+                                  nep_energy.nep_data.q_radial.data(), nep_energy.nep_data.s_angular.data());
+    CHECK(gpuMemset(NN_angular_i.data(), 0, sizeof(int)));
+    
     create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
       nep_energy.paramb,
       NN_ij_cpu,
@@ -558,30 +588,6 @@ void MC_Ensemble_SGC::compute(
  */
       // ***todo*** only for debugging!!!!!!
   
-
-    if (random_number < probability) {
-      ++num_accepted;
-
-      ++num_atoms_species[index_new_species];
-      --num_atoms_species[index_old_species];
-
-      atom.cpu_type[i] = type_j;
-      atom.cpu_atom_symbol[i] = species[index_new_species];
-      double mass_old = atom.cpu_mass[i];
-      double mass_new = MASS_TABLE.at(species[index_new_species]);
-      atom.cpu_mass[i] = mass_new;
-
-      gpu_flip<<<1, 1>>>(
-        i,
-        type_j,
-        mass_new,
-        mass_old / mass_new,
-        atom.type.data(),
-        atom.mass.data(),
-        atom.velocity_per_atom.data(),
-        atom.velocity_per_atom.data() + atom.number_of_atoms,
-        atom.velocity_per_atom.data() + atom.number_of_atoms * 2);
-
  
       nep_energy.accept_trial(
         NN_ij_cpu, 

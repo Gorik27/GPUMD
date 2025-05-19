@@ -363,8 +363,8 @@ static __global__ void find_energy_nep(
       for (int k = 0; k <= paramb.basis_size_radial; ++k) {
         int c_index_after = (n * (paramb.basis_size_radial + 1) + k) * paramb.num_types_sq;
         int c_index_before = c_index_after;
-        c_index_before += t1_before * paramb.num_types + t2;
-        c_index_after += t1_after * paramb.num_types + t2;
+        c_index_before += t2 * paramb.num_types + t1_before;
+        c_index_after += t2 * paramb.num_types + t1_after;
         dgn12 += fn12[k] * (annmb.c[c_index_after]-annmb.c[c_index_before]);
       }
       int index = n1*(paramb.n_max_radial+1) + n;
@@ -372,21 +372,22 @@ static __global__ void find_energy_nep(
       g_q_radial_trial[index] = q[n];//save trial to global memory (on GPU)
     }
     
-    
+    float s[NUM_OF_ABC];
     // get angular descriptors
     for (int n = 0; n <= paramb.n_max_angular; ++n) {
-      float s[NUM_OF_ABC] = {0.0f}; 
-      int index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC;
-      for (int l = 0; l<NUM_OF_ABC; ++l){
-          int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-          s[l] = g_s_angular[index_local];
-      }
       float delta_s[NUM_OF_ABC] = {0.0f};
       float r12[3] = {g_x12_angular[n1], g_y12_angular[n1], g_z12_angular[n1]};
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
+      s[NUM_OF_ABC] = {0.0f}; 
+      for (int l = 0; l<NUM_OF_ABC; ++l){
+          int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          s[l] = g_s_angular[index_local];
+          if (s[l]==0 && l<24){
+            printf("zero %d %d\n", n1, l);
+          }
+      }
       if (d12 != 0.f){
         float fc12;
-        int t2 = g_t2_angular[n1];
         double rc = paramb.rc_angular;
         double rcinv = paramb.rcinv_angular;
         if (paramb.use_typewise_cutoff) {
@@ -407,19 +408,19 @@ static __global__ void find_energy_nep(
         for (int k = 0; k <= paramb.basis_size_angular; ++k) {
           int c_index_before = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
           int c_index_after = c_index_before;
-          c_index_before += t1_before * paramb.num_types + t2 + paramb.num_c_radial;
-          c_index_after += t1_after * paramb.num_types + t2 + paramb.num_c_radial;
+          c_index_before += t2 * paramb.num_types +  t1_before + paramb.num_c_radial;
+          c_index_after += t2 * paramb.num_types + t1_after + paramb.num_c_radial;
           dgn12 += fn12[k] * (annmb.c[c_index_after] - annmb.c[c_index_before]);
         }
         accumulate_s(paramb.L_max, d12, r12[0], r12[1], r12[2], dgn12, delta_s);
         for (int l = 0; l<NUM_OF_ABC; ++l){
           s[l] = s[l] + delta_s[l];
         }
-        find_q(paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
-        for (int l = 0; l<NUM_OF_ABC; ++l){
-          int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-          g_s_angular_trial[index_local] = s[l];//save trial to global memory (on GPU)
-        }
+      }
+      find_q(paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
+      for (int l = 0; l<NUM_OF_ABC; ++l){
+        int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+        g_s_angular_trial[index_local] = s[l];//save trial to global memory (on GPU)
       }
     }
 
@@ -511,7 +512,7 @@ static __global__ void find_i_energy_nep(
     for (int i1 = 0; i1 < *g_NN_angular; ++i1) {
       float r12[3] = {g_x12_angular[i1], g_y12_angular[i1], g_z12_angular[i1]};
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
-      if (d12 != 0.f){
+      if (d12 != 0.f){// *** todo *** assert d12 != 0.f without if
         float fc12;
         int t2 = g_t2_angular[i1];
         double rc = paramb.rc_angular;
@@ -535,8 +536,8 @@ static __global__ void find_i_energy_nep(
         for (int k = 0; k <= paramb.basis_size_angular; ++k) {
           int c_index_before = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
           int c_index_after = c_index_before;
-          c_index_before += t2 * paramb.num_types + t1_before + paramb.num_c_radial;
-          c_index_after += t2 * paramb.num_types + t1_after + paramb.num_c_radial;
+          c_index_before += t1_before * paramb.num_types + t2 + paramb.num_c_radial;
+          c_index_after += t1_after * paramb.num_types + t2 + paramb.num_c_radial;
           gn12_before += fn12[k] * annmb.c[c_index_before];
           gn12_after += fn12[k] * annmb.c[c_index_after];
         }
@@ -548,7 +549,7 @@ static __global__ void find_i_energy_nep(
     }
   }
 
-  // nomalize descriptor
+  // normalize descriptor
   for (int d = 0; d < annmb.dim; ++d) {
     q_before[d] = q_before[d] * paramb.q_scaler[d];
     q_after[d] = q_after[d] * paramb.q_scaler[d];
@@ -690,7 +691,7 @@ void NEP_Energy::find_energy(
     g_y12_angular,
     g_z12_angular,
     g_delta_pe);
-
+  GPU_CHECK_KERNEL
   /*  *** todo *** zbl support
   if (zbl.enabled) {
     find_energy_zbl<<<(N - 1) / 64 + 1, 64>>>(
@@ -1025,8 +1026,11 @@ static __global__ void find_descriptor(
       for (int l = 0; l<NUM_OF_ABC; ++l){
         index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
         g_s[index] = s[l];
-      }
-      //save_s(paramb.L_max, g_s, s, index);// save to global memory (on GPU)
+        if (s[l]==0 && l<24){
+          printf("zero 0: %d\n", n1);
+    
+        }
+      }// save to global memory (on GPU)
       find_q(
         paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
     }
