@@ -262,41 +262,35 @@ static __global__ void create_inputs_for_energy_calculator(
   int k = blockIdx.x * blockDim.x + threadIdx.x; // neighbors of the swapped atom i
   if (k<N_local) {
     int n1 = atom_local[k];
-    if (n1 != i) {
-      double x2 = g_x[n1];
-      double y2 = g_y[n1];
-      double z2 = g_z[n1];
-      double x12 = x2 - g_x[i];
-      double y12 = y2 - g_y[i];
-      double z12 = z2 - g_z[i];
-      apply_mic(box, x12, y12, z12);
-      float distance_square = float(x12 * x12 + y12 * y12 + z12 * z12);
-      if (distance_square < rc_radial_square) {
-        g_t2_radial[k] = g_type[n1];
-        g_x12_radial[k] = float(x12);
-        g_y12_radial[k] = float(y12);
-        g_z12_radial[k] = float(z12);
-        
-        for (int n = 0; n <= paramb.n_max_radial; ++n){
+    double x2 = g_x[n1];
+    double y2 = g_y[n1];
+    double z2 = g_z[n1];
+    double x12 = x2 - g_x[i];
+    double y12 = y2 - g_y[i];
+    double z12 = z2 - g_z[i];
+    apply_mic(box, x12, y12, z12);
+    float distance_square = float(x12 * x12 + y12 * y12 + z12 * z12);
+    if (distance_square < rc_radial_square) {
+      g_t2_radial[k] = g_type[n1];
+      g_x12_radial[k] = float(x12);
+      g_y12_radial[k] = float(y12);
+      g_z12_radial[k] = float(z12);
+      
+      for (int n = 0; n <= paramb.n_max_radial; ++n){
+        int index, index_local;
+        index_local = k*(paramb.n_max_radial+1) + n;
+        index = n1*(paramb.n_max_radial+1) + n;
+        g_q_radial_local[index_local] = g_q_radial[index];
+      }
+      
+      for (int n = 0; n <= paramb.n_max_angular; ++n){
+        for (int l = 0; l<NUM_OF_ABC; ++l){
           int index, index_local;
-          index_local = k*(paramb.n_max_radial+1) + n;
-          index = n1*(paramb.n_max_radial+1) + n;
-          g_q_radial_local[index_local] = g_q_radial[index];
-        }
-        
-        for (int n = 0; n <= paramb.n_max_angular; ++n){
-          for (int l = 0; l<NUM_OF_ABC; ++l){
-            int index, index_local;
-            index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-            index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-            g_s_angular_local[index_local] = g_s_angular[index];
-          }
+          index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          g_s_angular_local[index_local] = g_s_angular[index];
         }
       }
-      else {
-        printf("Assertion ERROR!!! non neighbor in the NL");
-      }
-
       if (distance_square < rc_angular_square) {
         atomicAdd(g_NN_angular, 1);
         g_t2_angular[k] = g_type[n1];
@@ -305,11 +299,9 @@ static __global__ void create_inputs_for_energy_calculator(
         g_z12_angular[k] = float(z12);
       }
     }
-  else{
-    printf("Assertion ERROR!!! i (local %d) atom in the NL", k);
-  }
   }
 }
+
 
 // a kernel with a single thread <<<1, 1>>>
 static __global__ void gpu_flip(
@@ -354,12 +346,12 @@ void MC_Ensemble_SGC::compute(
     printf("Cannot use small box for MCMD.\n");
     exit(1);
   }
-
+/* 
   if (type_before.size() < atom.number_of_atoms) {
     type_before.resize(atom.number_of_atoms);
     type_after.resize(atom.number_of_atoms);
   }
-
+ */
   int group_size =
     grouping_method >= 0 ? groups[grouping_method].cpu_size[group_id] : atom.number_of_atoms;
   std::uniform_int_distribution<int> r1(0, group_size - 1);
@@ -403,7 +395,9 @@ void MC_Ensemble_SGC::compute(
       type_j = types[index_new_species];
     }
 
-    CHECK(gpuMemset(NN_ij.data(), 0, sizeof(int)));
+    NN_ij.fill(0);
+    pe_before_local.fill(0.0f);
+
     get_neighbors_of_i<<<(atom.number_of_atoms - 1) / 64 + 1, 64>>>(
       atom.number_of_atoms,
       box,
@@ -421,7 +415,14 @@ void MC_Ensemble_SGC::compute(
     int NN_ij_cpu;
     NN_ij.copy_to_host(&NN_ij_cpu);
 
-    CHECK(gpuMemset(NN_angular_i.data(), 0, sizeof(int)));
+    NN_angular_i.fill(0);
+    nep_energy.nep_data.q_radial_local.fill(0.0f);
+    nep_energy.nep_data.s_angular_local.fill(0.0f);
+    t2_angular.fill(0);
+    x12_angular.fill(0.0f);
+    y12_angular.fill(0.0f);
+    z12_angular.fill(0.0f);
+
     create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
       nep_energy.paramb,
       NN_ij_cpu,
@@ -449,6 +450,8 @@ void MC_Ensemble_SGC::compute(
       nep_energy.nep_data.s_angular_local.data());
     GPU_CHECK_KERNEL
     
+    nep_energy.nep_data.q_radial_trial_local.fill(0.0f);
+    nep_energy.nep_data.s_angular_trial_local.fill(0.0f);
     nep_energy.find_energy(
       NN_ij_cpu,
       i,
@@ -471,11 +474,10 @@ void MC_Ensemble_SGC::compute(
     delta_pe.copy_to_host(delta_pe_cpu.data(), NN_ij_cpu+1);
 
     float energy_difference = 0.0f;
-    for (int n = 0; n < NN_ij_cpu+1; ++n) {
+    for (int n = 0; n < NN_ij_cpu; ++n) {
       energy_difference += delta_pe_cpu[n];
     }
-    //energy_difference += delta_pe_cpu[NN_ij_cpu];//energy if the swapped atoms
-    
+    energy_difference += delta_pe_cpu[NN_ij_cpu];
     mc_output << i << "; " << type_i << "; " << type_j << "; " << energy_difference << std::endl;
 
     if (!is_vcsgc) {
@@ -490,10 +492,11 @@ void MC_Ensemble_SGC::compute(
     std::uniform_real_distribution<float> r2(0, 1);
     float random_number = r2(rng);
     float probability = exp(-energy_difference / (K_B * temperature));
-
+    random_number = 0;// *** todo *** only for debugging
+    mc_output << "prob " << probability << std::endl;
     if (random_number < probability) {
       ++num_accepted;
-
+      mc_output << "acc" << std::endl;
       ++num_atoms_species[index_new_species];
       --num_atoms_species[index_old_species];
 
@@ -514,12 +517,17 @@ void MC_Ensemble_SGC::compute(
         atom.velocity_per_atom.data() + atom.number_of_atoms,
         atom.velocity_per_atom.data() + atom.number_of_atoms * 2);
 
-          /* 
-  descriptor's debugg output
- */
+
     nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
                                   nep_energy.nep_data.q_radial.data(), nep_energy.nep_data.s_angular.data());
-    CHECK(gpuMemset(NN_angular_i.data(), 0, sizeof(int)));
+    NN_angular_i.fill(0);
+
+    nep_energy.nep_data.q_radial_local.fill(0.0f);
+    nep_energy.nep_data.s_angular_local.fill(0.0f);
+    t2_angular.fill(0);
+    x12_angular.fill(0.0f);
+    y12_angular.fill(0.0f);
+    z12_angular.fill(0.0f);
     
     create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
       nep_energy.paramb,
@@ -554,12 +562,12 @@ void MC_Ensemble_SGC::compute(
   std::vector<float> q_rad_t(NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
   nep_energy.nep_data.q_radial_trial_local.copy_to_host(q_rad_t.data(), NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
   printf("radial\n");
-  for (int i = 0; i < NN_ij_cpu; ++i){
-    for (int j = 0; j <= nep_energy.paramb.n_max_radial; ++j){
-      int index = i*(nep_energy.paramb.n_max_radial+1) + j;
+  for (int n1 = 0; n1 < NN_ij_cpu; ++n1){
+    for (int n = 0; n <= nep_energy.paramb.n_max_radial; ++n){
+      int index = n1*(nep_energy.paramb.n_max_radial+1) + n;
       printf("%d %d %.6f %.6f\n", 
-      i,
-      j,
+      n1,
+      n,
       q_rad.data()[index],
       q_rad_t.data()[index]);
     }
@@ -570,14 +578,14 @@ void MC_Ensemble_SGC::compute(
   std::vector<float> s_t(NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
   nep_energy.nep_data.s_angular_trial_local.copy_to_host(s_t.data(), NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
   printf("angular\n");
-  for (int i = 0; i < NN_ij_cpu; ++i){
-    for (int j = 0; j <= nep_energy.paramb.n_max_angular; ++j){
-      for (int k = 0; k<=NUM_ABC; ++k){
-        int index = i*(nep_energy.paramb.n_max_angular+1)*NUM_ABC + j*NUM_ABC + k;
+  for (int n1 = 0; n1 < NN_ij_cpu; ++n1){
+    for (int n = 0; n <= nep_energy.paramb.n_max_angular; ++n){
+      for (int l = 0; l<NUM_ABC; ++l){
+        int index = n1*(nep_energy.paramb.n_max_angular+1)*NUM_ABC + n*NUM_ABC + l;
         printf("%d %d %d %.6f %.6f\n", 
-        i,
-        j,
-        k,
+        n1,
+        n,
+        l,
         s.data()[index],
         s_t.data()[index]);
       }

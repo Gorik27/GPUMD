@@ -37,10 +37,10 @@ struct NEP_Data {
   GPU_Vector<float> s_angular; // per-atom "s" part of the angular descriptor components
   GPU_Vector<float> q_radial_local; // *** todo *** it is good to make this a pointer to global array // per-atom radial descriptor components (loacl array only for neighbors of MC swapped atom)
   GPU_Vector<float> s_angular_local; // per-atom "s" part of the angular descriptor components (loacl array only for neighbors of MC swapped atom)
-  //GPU_Vector<float> q_radial_trial; // per-atom radial descriptor components after trial step
-  //GPU_Vector<float> s_angular_trial; // per-atom "s" part of the angular descriptor components after trial step
   GPU_Vector<float> q_radial_trial_local; 
+  int q_radial_local_size;
   GPU_Vector<float> s_angular_trial_local;
+  int s_angular_local_size;
   std::vector<int> cpu_NN_radial;
   std::vector<int> cpu_NN_angular;
   GPU_Vector<float> pe;
