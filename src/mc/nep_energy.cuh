@@ -125,13 +125,10 @@ public:
       const int type_i,
       const int type_j,
       const int* g_t2_radial,
-      const int* g_t2_angular,
       const float* g_x12_radial,
       const float* g_y12_radial,
       const float* g_z12_radial,
-      const float* g_x12_angular,
-      const float* g_y12_angular,
-      const float* g_z12_angular,
+      const bool* g_is_neigh_angular,
       float* g_delta_pe,
       float* g_pe);
 

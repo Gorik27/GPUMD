@@ -81,13 +81,10 @@ MC_Ensemble::MC_Ensemble(const char** param, int num_param, const int num_atoms)
   local_type_before.resize(n_max);
   local_type_after.resize(n_max);
   t2_radial.resize(n_max);
-  t2_angular.resize(m_max);
   x12_radial.resize(n_max);
   y12_radial.resize(n_max);
   z12_radial.resize(n_max);
-  x12_angular.resize(m_max);
-  y12_angular.resize(m_max);
-  z12_angular.resize(m_max);
+  is_neigh_angular.resize(m_max);
   pe_before.resize(n_max);
   pe_after.resize(n_max);
 

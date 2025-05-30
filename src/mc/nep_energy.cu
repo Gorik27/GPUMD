@@ -321,13 +321,10 @@ static __global__ void find_energy_nep(
   const int t1_before,
   const int t1_after,
   const int* __restrict__ g_t2_radial,
-  const int* __restrict__ g_t2_angular,
   const float* __restrict__ g_x12_radial,
   const float* __restrict__ g_y12_radial,
   const float* __restrict__ g_z12_radial,
-  const float* __restrict__ g_x12_angular,
-  const float* __restrict__ g_y12_angular,
-  const float* __restrict__ g_z12_angular,
+  const bool* __restrict__ g_is_neigh_angular,
   float* g_delta_pe,
   float* g_pe,
   float* g_q_radial,
@@ -348,13 +345,6 @@ static __global__ void find_energy_nep(
     double rcinv = paramb.rcinv_radial;
     if (paramb.use_typewise_cutoff) {
       printf("typewise cutoff unsupported in MC now");
-      //throw std::exception();
-      rc = min(
-        (COVALENT_RADIUS[paramb.atomic_numbers[t1_after]] +
-          COVALENT_RADIUS[paramb.atomic_numbers[t2]]) *
-          paramb.typewise_cutoff_radial_factor,
-        rc);
-      rcinv = 1.0f / rc;
     }
     find_fc(rc, rcinv, d12, fc12);
 
@@ -375,29 +365,20 @@ static __global__ void find_energy_nep(
     }
     
     // get angular descriptors
-    float s[NUM_OF_ABC];
     for (int n = 0; n <= paramb.n_max_angular; ++n) {
-      s[NUM_OF_ABC] = {0.0f}; 
+      float s[NUM_OF_ABC] = {0.0f}; 
       for (int l = 0; l<NUM_OF_ABC; ++l){
           int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
           s[l] = g_s_angular[index_local];
       }
-      float delta_s[NUM_OF_ABC] = {0.0f};
-      float r12[3] = {g_x12_angular[n1], g_y12_angular[n1], g_z12_angular[n1]};
-      float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
-      if (d12 != 0.0f){
+      if (g_is_neigh_angular[n1]){
+        float r12[3] = {-g_x12_radial[n1], -g_y12_radial[n1], -g_z12_radial[n1]};
+        float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
         float fc12;
         double rc = paramb.rc_angular;
         double rcinv = paramb.rcinv_angular;
         if (paramb.use_typewise_cutoff) {
           printf("typewise cutoff unsupported in MC now");
-          //throw std::exception();
-          rc = min(
-            (COVALENT_RADIUS[paramb.atomic_numbers[t1_after]] +
-              COVALENT_RADIUS[paramb.atomic_numbers[t2]]) *
-              paramb.typewise_cutoff_angular_factor,
-            rc);
-          rcinv = 1.0f / rc;
         }
         find_fc(rc, rcinv, d12, fc12);
 
@@ -405,12 +386,17 @@ static __global__ void find_energy_nep(
         find_fn(paramb.basis_size_angular, rcinv, d12, fc12, fn12);
         float dgn12 = 0.0f;
         for (int k = 0; k <= paramb.basis_size_angular; ++k) {
-          int c_index_before = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
+          /* int c_index_before = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
           int c_index_after = c_index_before;
           c_index_before += t2 * paramb.num_types +  t1_before + paramb.num_c_radial;
           c_index_after += t2 * paramb.num_types + t1_after + paramb.num_c_radial;
+          dgn12 += fn12[k] * (annmb.c[c_index_after] - annmb.c[c_index_before]); */
+          int base_index = (n * (paramb.basis_size_angular + 1) + k) * paramb.num_types_sq;
+          int c_index_before = base_index + t2 * paramb.num_types + t1_before + paramb.num_c_radial;
+          int c_index_after = base_index + t2 * paramb.num_types + t1_after + paramb.num_c_radial;
           dgn12 += fn12[k] * (annmb.c[c_index_after] - annmb.c[c_index_before]);
         }
+        float delta_s[NUM_OF_ABC] = {0.0f};
         accumulate_s(paramb.L_max, d12, r12[0], r12[1], r12[2], dgn12, delta_s);
         for (int l = 0; l<NUM_OF_ABC; ++l){
           s[l] = s[l] + delta_s[l];
@@ -453,13 +439,10 @@ static __global__ void find_i_energy_nep(
   const int t1_before,
   const int t1_after,
   const int* __restrict__ g_t2_radial,
-  const int* __restrict__ g_t2_angular,
   const float* __restrict__ g_x12_radial,
   const float* __restrict__ g_y12_radial,
   const float* __restrict__ g_z12_radial,
-  const float* __restrict__ g_x12_angular,
-  const float* __restrict__ g_y12_angular,
-  const float* __restrict__ g_z12_angular,
+  const bool* __restrict__ g_is_neigh_angular,
   float* g_delta_pe,
   float* g_q_radial_trial,
   float* g_s_angular_trial)
@@ -514,11 +497,11 @@ static __global__ void find_i_energy_nep(
     float s_before[NUM_OF_ABC] = {0.0f};
     float s_after[NUM_OF_ABC] = {0.0f};
     for (int i1 = 0; i1 < g_NN_radial; ++i1) {/// radial !!!! since g_x12_angular has shape of g_x12_radial
-      float r12[3] = {g_x12_angular[i1], g_y12_angular[i1], g_z12_angular[i1]};
+      float r12[3] = {g_x12_radial[i1], g_y12_radial[i1], g_z12_radial[i1]};
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
-      if (d12 != 0.0f){
+      if (g_is_neigh_angular){
         float fc12;
-        int t2 = g_t2_angular[i1];
+        int t2 = g_t2_radial[i1];
         double rc = paramb.rc_angular;
         double rcinv = paramb.rcinv_angular;
         if (paramb.use_typewise_cutoff) {
@@ -649,13 +632,10 @@ void NEP_Energy::find_energy(
   const int type_i,
   const int type_j,
   const int* g_t2_radial,
-  const int* g_t2_angular,
   const float* g_x12_radial,
   const float* g_y12_radial,
   const float* g_z12_radial,
-  const float* g_x12_angular,
-  const float* g_y12_angular,
-  const float* g_z12_angular,
+  const bool* g_is_neigh_angular,
   float* g_delta_pe,
   float* g_pe)
 {
@@ -667,13 +647,10 @@ void NEP_Energy::find_energy(
     type_i,
     type_j,
     g_t2_radial,
-    g_t2_angular,
     g_x12_radial,
     g_y12_radial,
     g_z12_radial,
-    g_x12_angular,
-    g_y12_angular,
-    g_z12_angular,
+    g_is_neigh_angular,
     g_delta_pe,
     g_pe,
     nep_data.q_radial_local.data(),
@@ -692,13 +669,10 @@ void NEP_Energy::find_energy(
     type_i,
     type_j,
     g_t2_radial,
-    g_t2_angular,
     g_x12_radial,
     g_y12_radial,
     g_z12_radial,
-    g_x12_angular,
-    g_y12_angular,
-    g_z12_angular,
+    g_is_neigh_angular,
     g_delta_pe,
     nep_data.q_radial_trial_local.data(),
     nep_data.s_angular_trial_local.data());

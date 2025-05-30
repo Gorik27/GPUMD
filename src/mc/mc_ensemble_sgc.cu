@@ -247,13 +247,10 @@ static __global__ void create_inputs_for_energy_calculator(
   const int* g_type,
   int* g_NN_angular,
   int* g_t2_radial,
-  int* g_t2_angular,
   float* g_x12_radial,
   float* g_y12_radial,
   float* g_z12_radial,
-  float* g_x12_angular,
-  float* g_y12_angular,
-  float* g_z12_angular,
+  bool* g_is_neigh_angular,
   float* g_q_radial,
   float* g_s_angular,
   float* g_q_radial_local,
@@ -287,16 +284,16 @@ static __global__ void create_inputs_for_energy_calculator(
         for (int l = 0; l<NUM_OF_ABC; ++l){
           int index, index_local;
           index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-          index = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          index =      n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
           g_s_angular_local[index_local] = g_s_angular[index];
         }
       }
       if (distance_square < rc_angular_square) {
         atomicAdd(g_NN_angular, 1);
-        g_t2_angular[k] = g_type[n1];
-        g_x12_angular[k] = float(x12);
-        g_y12_angular[k] = float(y12);
-        g_z12_angular[k] = float(z12);
+        g_is_neigh_angular[k] = true;
+      }
+      else {
+        g_is_neigh_angular[k] = false;
       }
     }
   }
@@ -418,10 +415,7 @@ void MC_Ensemble_SGC::compute(
     NN_angular_i.fill(0);
     nep_energy.nep_data.q_radial_local.fill(0.0f);
     nep_energy.nep_data.s_angular_local.fill(0.0f);
-    t2_angular.fill(0);
-    x12_angular.fill(0.0f);
-    y12_angular.fill(0.0f);
-    z12_angular.fill(0.0f);
+    is_neigh_angular.fill(false);
 
     create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
       nep_energy.paramb,
@@ -437,13 +431,10 @@ void MC_Ensemble_SGC::compute(
       atom.type.data(),
       NN_angular_i.data(),
       t2_radial.data(),
-      t2_angular.data(),
       x12_radial.data(),
       y12_radial.data(),
       z12_radial.data(),
-      x12_angular.data(),
-      y12_angular.data(),
-      z12_angular.data(),
+      is_neigh_angular.data(),
       nep_energy.nep_data.q_radial.data(),
       nep_energy.nep_data.s_angular.data(),
       nep_energy.nep_data.q_radial_local.data(),
@@ -459,13 +450,10 @@ void MC_Ensemble_SGC::compute(
       type_i,
       type_j,
       t2_radial.data(),
-      t2_angular.data(),
       x12_radial.data(),
       y12_radial.data(),
       z12_radial.data(),
-      x12_angular.data(),
-      y12_angular.data(),
-      z12_angular.data(),
+      is_neigh_angular.data(),
       delta_pe.data(),
       pe_before_local.data());
     
@@ -492,11 +480,10 @@ void MC_Ensemble_SGC::compute(
     std::uniform_real_distribution<float> r2(0, 1);
     float random_number = r2(rng);
     float probability = exp(-energy_difference / (K_B * temperature));
-    random_number = 0;// *** todo *** only for debugging
-    mc_output << "prob " << probability << std::endl;
+    //mc_output << "prob " << probability << std::endl;
     if (random_number < probability) {
       ++num_accepted;
-      mc_output << "acc" << std::endl;
+      //mc_output << "acc" << std::endl;
       ++num_atoms_species[index_new_species];
       --num_atoms_species[index_old_species];
 
@@ -518,16 +505,13 @@ void MC_Ensemble_SGC::compute(
         atom.velocity_per_atom.data() + atom.number_of_atoms * 2);
 
 
-    nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
+/*     nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
                                   nep_energy.nep_data.q_radial.data(), nep_energy.nep_data.s_angular.data());
+    
     NN_angular_i.fill(0);
-
     nep_energy.nep_data.q_radial_local.fill(0.0f);
     nep_energy.nep_data.s_angular_local.fill(0.0f);
-    t2_angular.fill(0);
-    x12_angular.fill(0.0f);
-    y12_angular.fill(0.0f);
-    z12_angular.fill(0.0f);
+    is_neigh_angular.fill(false);
     
     create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
       nep_energy.paramb,
@@ -543,13 +527,10 @@ void MC_Ensemble_SGC::compute(
       atom.type.data(),
       NN_angular_i.data(),
       t2_radial.data(),
-      t2_angular.data(),
       x12_radial.data(),
       y12_radial.data(),
       z12_radial.data(),
-      x12_angular.data(),
-      y12_angular.data(),
-      z12_angular.data(),
+      is_neigh_angular.data(),
       nep_energy.nep_data.q_radial.data(),
       nep_energy.nep_data.s_angular.data(),
       nep_energy.nep_data.q_radial_local.data(),
@@ -594,7 +575,7 @@ void MC_Ensemble_SGC::compute(
   /* 
   end of descriptor's debugg output
  */
-      // ***todo*** only for debugging!!!!!!
+      // ***todo*** only for debugging!!!!!! */
   
  
       nep_energy.accept_trial(

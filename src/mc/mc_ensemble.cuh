@@ -53,13 +53,10 @@ protected:
   GPU_Vector<int> local_type_before;
   GPU_Vector<int> local_type_after;
   GPU_Vector<int> t2_radial;
-  GPU_Vector<int> t2_angular;
   GPU_Vector<float> x12_radial;
   GPU_Vector<float> y12_radial;
   GPU_Vector<float> z12_radial;
-  GPU_Vector<float> x12_angular;
-  GPU_Vector<float> y12_angular;
-  GPU_Vector<float> z12_angular;
+  GPU_Vector<bool> is_neigh_angular;
   GPU_Vector<float> pe_before;
   GPU_Vector<float> pe_after;
 
