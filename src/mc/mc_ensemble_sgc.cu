@@ -165,40 +165,6 @@ MC_Ensemble_SGC::MC_Ensemble_SGC(
 }
 
 MC_Ensemble_SGC::~MC_Ensemble_SGC(void) { mc_output.close(); }
-/* 
-static __global__ void get_types(
-  const int N,
-  const int i,
-  const int type_j,
-  const int* g_type,
-  int* g_type_before,
-  int* g_type_after)
-{
-  int n = blockIdx.x * blockDim.x + threadIdx.x;
-  if (n < N) {
-    g_type_before[n] = g_type[n];
-    g_type_after[n] = g_type[n];
-    if (n == i) {
-      g_type_after[i] = type_j;
-    }
-  }
-}
-
-static __global__ void find_local_types(
-  const int N_local,
-  const int* atom_local,
-  const int* g_type_before,
-  const int* g_type_after,
-  int* g_local_type_before,
-  int* g_local_type_after)
-{
-  int k = blockIdx.x * blockDim.x + threadIdx.x;
-  if (k < N_local) {
-    int n = atom_local[k];
-    g_local_type_before[k] = g_type_before[n];
-    g_local_type_after[k] = g_type_after[n];
-  }
-} */
 
 static __global__ void get_neighbors_of_i(
   const int N,
@@ -214,7 +180,7 @@ static __global__ void get_neighbors_of_i(
   float* g_pe_before_local)
 {
   int n = blockIdx.x * blockDim.x + threadIdx.x;
-  if (n < N && n!=i) {
+  if (n < N && n != i) {
     double x0 = g_x[n];
     double y0 = g_y[n];
     double z0 = g_z[n];
@@ -297,6 +263,23 @@ static __global__ void create_inputs_for_energy_calculator(
       }
     }
   }
+  else if (k = N_local){// central (i) atom
+    for (int n = 0; n <= paramb.n_max_radial; ++n){
+        int index, index_local;
+        index_local = k*(paramb.n_max_radial+1) + n;
+        index = i*(paramb.n_max_radial+1) + n;
+        g_q_radial_local[index_local] = g_q_radial[index];
+      }
+
+    for (int n = 0; n <= paramb.n_max_angular; ++n){
+        for (int l = 0; l<NUM_OF_ABC; ++l){
+          int index, index_local;
+          index_local = k*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          index =      i*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
+          g_s_angular_local[index_local] = g_s_angular[index];
+        }
+      }
+  }
 }
 
 
@@ -343,12 +326,7 @@ void MC_Ensemble_SGC::compute(
     printf("Cannot use small box for MCMD.\n");
     exit(1);
   }
-/* 
-  if (type_before.size() < atom.number_of_atoms) {
-    type_before.resize(atom.number_of_atoms);
-    type_after.resize(atom.number_of_atoms);
-  }
- */
+
   int group_size =
     grouping_method >= 0 ? groups[grouping_method].cpu_size[group_id] : atom.number_of_atoms;
   std::uniform_int_distribution<int> r1(0, group_size - 1);
@@ -356,22 +334,10 @@ void MC_Ensemble_SGC::compute(
   nep_energy.compute_large_box(
     box, 
     atom.type, 
-    atom.position_per_atom, 
-    nep_energy.nep_data.pe.data(), 
-    nep_energy.nep_data.q_radial.data(), 
-    nep_energy.nep_data.s_angular.data());
-  
-  std::vector<float> pe_before_cpu(atom.number_of_atoms);
+    atom.position_per_atom);
 
-  nep_energy.nep_data.pe.copy_to_host(pe_before_cpu.data(), atom.number_of_atoms);
-  
-  float pe_before_total = 0.0f;
-  for (int n = 0; n < atom.number_of_atoms; ++n) {
-    pe_before_total += pe_before_cpu[n];
-  }
-  
   int num_accepted = 0;
-  mc_output << "MC step" << std::endl; // ***todo*** debug
+  //mc_output << "MC step" << std::endl; // ***todo*** debug
   for (int step = 0; step < num_steps_mc; ++step) {
     int i = -1;
     int type_i = -1;
@@ -412,12 +378,16 @@ void MC_Ensemble_SGC::compute(
     int NN_ij_cpu;
     NN_ij.copy_to_host(&NN_ij_cpu);
 
+    gpuMemcpy(&pe_before_local.data()[NN_ij_cpu], &nep_energy.nep_data.pe.data()[i], sizeof(float), gpuMemcpyDeviceToDevice); 
+
     NN_angular_i.fill(0);
     nep_energy.nep_data.q_radial_local.fill(0.0f);
     nep_energy.nep_data.s_angular_local.fill(0.0f);
+    nep_energy.nep_data.q_radial_i.fill(0.0f);
+    nep_energy.nep_data.s_angular_i.fill(0.0f);
     is_neigh_angular.fill(false);
 
-    create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
+    create_inputs_for_energy_calculator<<<((NN_ij_cpu + 1) - 1) / 64 + 1, 64>>>(// (NN_ij_cpu + 1) due to the fact that array[N_ij_cpu] contain information about central (i) atom
       nep_energy.paramb,
       NN_ij_cpu,
       i,
@@ -443,6 +413,7 @@ void MC_Ensemble_SGC::compute(
     
     nep_energy.nep_data.q_radial_trial_local.fill(0.0f);
     nep_energy.nep_data.s_angular_trial_local.fill(0.0f);
+
     nep_energy.find_energy(
       NN_ij_cpu,
       i,
@@ -457,7 +428,6 @@ void MC_Ensemble_SGC::compute(
       delta_pe.data(),
       pe_before_local.data());
     
-    
     std::vector<float> delta_pe_cpu(NN_ij_cpu+1);
     delta_pe.copy_to_host(delta_pe_cpu.data(), NN_ij_cpu+1);
 
@@ -465,8 +435,8 @@ void MC_Ensemble_SGC::compute(
     for (int n = 0; n < NN_ij_cpu; ++n) {
       energy_difference += delta_pe_cpu[n];
     }
-    energy_difference += delta_pe_cpu[NN_ij_cpu];
-    mc_output << i << "; " << type_i << "; " << type_j << "; " << energy_difference << std::endl;
+    energy_difference += delta_pe_cpu[NN_ij_cpu]; // delta energy of the central (i) atom
+    //mc_output << i << "; " << type_i << "; " << type_j << "; " << energy_difference << std::endl;
 
     if (!is_vcsgc) {
       energy_difference += mu_or_phi[index_new_species] - mu_or_phi[index_old_species];
@@ -504,84 +474,9 @@ void MC_Ensemble_SGC::compute(
         atom.velocity_per_atom.data() + atom.number_of_atoms,
         atom.velocity_per_atom.data() + atom.number_of_atoms * 2);
 
-
-/*     nep_energy.compute_large_box(box, atom.type, atom.position_per_atom, nep_energy.nep_data.pe.data(), 
-                                  nep_energy.nep_data.q_radial.data(), nep_energy.nep_data.s_angular.data());
-    
-    NN_angular_i.fill(0);
-    nep_energy.nep_data.q_radial_local.fill(0.0f);
-    nep_energy.nep_data.s_angular_local.fill(0.0f);
-    is_neigh_angular.fill(false);
-    
-    create_inputs_for_energy_calculator<<<(NN_ij_cpu - 1) / 64 + 1, 64>>>(
-      nep_energy.paramb,
-      NN_ij_cpu,
-      i,
-      NL_ij.data(),
-      box,
-      nep_energy.paramb.rc_radial * nep_energy.paramb.rc_radial,
-      nep_energy.paramb.rc_angular * nep_energy.paramb.rc_angular,
-      atom.position_per_atom.data(),
-      atom.position_per_atom.data() + atom.number_of_atoms, 
-      atom.position_per_atom.data() + atom.number_of_atoms * 2, 
-      atom.type.data(),
-      NN_angular_i.data(),
-      t2_radial.data(),
-      x12_radial.data(),
-      y12_radial.data(),
-      z12_radial.data(),
-      is_neigh_angular.data(),
-      nep_energy.nep_data.q_radial.data(),
-      nep_energy.nep_data.s_angular.data(),
-      nep_energy.nep_data.q_radial_local.data(),
-      nep_energy.nep_data.s_angular_local.data());
-    GPU_CHECK_KERNEL
-
-
-  std::vector<float> q_rad(NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
-  nep_energy.nep_data.q_radial_local.copy_to_host(q_rad.data(), NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
-  std::vector<float> q_rad_t(NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
-  nep_energy.nep_data.q_radial_trial_local.copy_to_host(q_rad_t.data(), NN_ij_cpu*(nep_energy.paramb.n_max_radial+1));
-  printf("radial\n");
-  for (int n1 = 0; n1 < NN_ij_cpu; ++n1){
-    for (int n = 0; n <= nep_energy.paramb.n_max_radial; ++n){
-      int index = n1*(nep_energy.paramb.n_max_radial+1) + n;
-      printf("%d %d %.6f %.6f\n", 
-      n1,
-      n,
-      q_rad.data()[index],
-      q_rad_t.data()[index]);
-    }
-  } 
-  const int NUM_ABC = 24;
-  std::vector<float> s(NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
-  nep_energy.nep_data.s_angular_local.copy_to_host(s.data(), NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
-  std::vector<float> s_t(NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
-  nep_energy.nep_data.s_angular_trial_local.copy_to_host(s_t.data(), NN_ij_cpu*(nep_energy.paramb.n_max_angular+1)*NUM_ABC);
-  printf("angular\n");
-  for (int n1 = 0; n1 < NN_ij_cpu; ++n1){
-    for (int n = 0; n <= nep_energy.paramb.n_max_angular; ++n){
-      for (int l = 0; l<NUM_ABC; ++l){
-        int index = n1*(nep_energy.paramb.n_max_angular+1)*NUM_ABC + n*NUM_ABC + l;
-        printf("%d %d %d %.6f %.6f\n", 
-        n1,
-        n,
-        l,
-        s.data()[index],
-        s_t.data()[index]);
-      }
-    } 
-  }
-  /* 
-  end of descriptor's debugg output
- */
-      // ***todo*** only for debugging!!!!!! */
-  
- 
       nep_energy.accept_trial(
         NN_ij_cpu, 
         NL_ij.data(),
-        nep_energy.nep_data.pe.data(),
         delta_pe.data(),
         i);
     }

@@ -36,7 +36,9 @@ struct NEP_Data {
   GPU_Vector<float> q_radial; // per-atom radial descriptor components
   GPU_Vector<float> s_angular; // per-atom "s" part of the angular descriptor components
   GPU_Vector<float> q_radial_local; // *** todo *** it is good to make this a pointer to global array // per-atom radial descriptor components (loacl array only for neighbors of MC swapped atom)
-  GPU_Vector<float> s_angular_local; // per-atom "s" part of the angular descriptor components (loacl array only for neighbors of MC swapped atom)
+  GPU_Vector<float> s_angular_local; // per-atom "s" part of the angular descriptor components (loсal array only for neighbors of MC swapped atom)
+  GPU_Vector<float> q_radial_i; // array with per-neighbor components of radial descriptor of the central atom (i) 
+  GPU_Vector<float> s_angular_i; // array with per-neighbor components of angular descriptor of the central atom (i) 
   GPU_Vector<float> q_radial_trial_local; 
   int q_radial_local_size;
   GPU_Vector<float> s_angular_trial_local;
@@ -135,15 +137,11 @@ public:
   void compute_large_box(
     Box& box,
     const GPU_Vector<int>& type,
-    const GPU_Vector<double>& position,
-    float* potential,
-    float* q_radial,
-    float* s_angular);
+    const GPU_Vector<double>& position);
 
   void accept_trial(
     const int N_local,
     const int* atom_local,
-    float* g_pe_before,
     float* g_delta_pe,
     const int i);
 
