@@ -255,7 +255,7 @@ static __global__ void create_inputs_for_energy_calculator(
         }
       }
       if (distance_square < rc_angular_square) {
-        atomicAdd(g_NN_angular, 1);
+        //atomicAdd(g_NN_angular, 1);
         g_is_neigh_angular[k] = true;
       }
       else {
