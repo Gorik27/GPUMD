@@ -21,9 +21,9 @@ CUDA_ARCH=-arch=sm_60
 ifdef OS # For Windows with the cl.exe compiler
 CFLAGS = -O3 $(CUDA_ARCH)
 else # For linux
-CFLAGS = -std=c++14 -O3 $(CUDA_ARCH) -DDEBUG
+CFLAGS = -std=c++14 -O3 $(CUDA_ARCH) # -DDEBUG
 gflag = #-g #-G
-nep_gflag =# -G -O0
+nep_gflag = # -G -O0
 endif
 INC = -I./
 LDFLAGS = 
