@@ -371,8 +371,6 @@ static __global__ void find_energy_nep(
       q[n] = g_q_radial[index_n1] + dgn12_n1;
       g_q_radial_trial[index_n1] = q[n];//save trial to global memory (on GPU)
 
-      //int index_i = n1*(paramb.n_max_radial+1) + n;
-      //g_q_radial_i[index_i] = dgn12_i;//save impact of n1 atom to the central (i) atom's descriptor
       int index_i = N*(paramb.n_max_radial+1) + n;
       atomicAdd(&g_q_radial_trial[index_i], dgn12_i);
     }
@@ -421,8 +419,6 @@ static __global__ void find_energy_nep(
         float delta_s_i[NUM_OF_ABC] = {0.0f};
         accumulate_s(paramb.L_max, d12, r12[0], r12[1], r12[2], dgn12_i, delta_s_i);
         for (int l = 0; l<NUM_OF_ABC; ++l){
-          //int index_local = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-          //g_s_angular[index_local] = delta_s_i[l];//save trial to global memory (on GPU)
           int index_local = N*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
           atomicAdd(&g_s_angular_trial[index_local], delta_s_i[l]);//save trial to global memory (on GPU)
         }
@@ -619,11 +615,6 @@ static __global__ void find_i_energy_nep(
   // get radial descriptors 
   for (int n = 0; n <= paramb.n_max_radial; ++n) {
     int index_i = N*(paramb.n_max_radial+1) + n;
-/*     q[n] = g_q_radial[index_i];
-    for (int n1 = 0; n1 < g_NN_radial; ++n1) {
-      int index = n1*(paramb.n_max_radial+1) + n;
-      q[n] += g_delta_q_radial_i[index];
-    } */
     q[n] = g_q_radial[index_i] + g_q_radial_trial[index_i];
     g_q_radial_trial[index_i] = q[n];//save trial to global memory (on GPU)
   }
@@ -633,19 +624,10 @@ static __global__ void find_i_energy_nep(
     float s[NUM_OF_ABC] = {0.0f};
     for (int l = 0; l<NUM_OF_ABC; ++l){
       int index = N*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-/*       s[l] = g_s_angular[index];
-      for (int n1 = 0; n1 < g_NN_radial; ++n1) {/// radial !!!! since g_x12_angular has shape of g_x12_radial
-        int index_n1 = n1*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-        s[l] += g_delta_s_angular_i[index_n1];
-      } */
         s[l] = g_s_angular[index] + g_s_angular_trial[index];
         g_s_angular_trial[index] = s[l];//save trial to global memory (on GPU)
     }
     find_q(paramb.L_max, paramb.num_L, paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
-/*     for (int l = 0; l<NUM_OF_ABC; ++l){
-      int index_local = N*(paramb.n_max_angular+1)*NUM_OF_ABC + n*NUM_OF_ABC + l;
-      g_s_angular_trial[index_local] = s[l];//save trial to global memory (on GPU)
-    } */
   }
   
   // normalize descriptor
