@@ -1,8 +1,0 @@
-potential         UNEP_v1.txt
-ensemble npt_ber 600 600 100 0 0 0 100 100 100 1000
-time_step 1
-dump_thermo 100
-dump_exyz 100 1
-dump_restart 100
-mc vcsgc 1 40 600 600 2 Ag 0 Ni 2.84 50
-run 1
