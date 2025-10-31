@@ -1,16 +1,17 @@
-.. _NEP_ILP:
+.. _nep_ilp:
 .. index::
    single: NEP ILP
 
 Hybrid NEP+ILP potential
 ========================
 
-The hybrid :term:`NEP` + :term:`ILP` potential in :program:`GPUMD` combines the neuroevolution potential 
+The hybrid :term:`NEP` + :term:`ILP` potential [Bu2025]_ in :program:`GPUMD` combines the neuroevolution potential 
 (:term:`NEP`), [Fan2022b]_ (NEP3), and [Song2024]_ (NEP4), for intralyer
 interactions and the interlayer potential (:term:`ILP`) [Ouyang2018]_ [Ouyang2020]_ 
 for interlayer interactions to simulate van der Waals materials. 
 Now this hybrid potential supports to simulate homo- and heterostructures based on 
-graphene, :math:`h`-BN and transition metal dichalcogenides (TMDs) layered materials.
+graphene, :math:`h`-BN and transition metal dichalcogenides (TMDs) layered materials. 
+The :term:`nep` potential here doesn't support :attr:`USE_TABLE` flag to accelerate now.
 
 Potential form
 --------------

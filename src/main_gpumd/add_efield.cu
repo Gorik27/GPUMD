@@ -18,8 +18,10 @@ Add electric field to a group of atoms.
 ------------------------------------------------------------------------------*/
 
 #include "add_efield.cuh"
+#include "force/force.cuh"
 #include "model/atom.cuh"
 #include "model/group.cuh"
+#include "utilities/gpu_vector.cuh"
 #include "utilities/gpu_macro.cuh"
 #include "utilities/read_file.cuh"
 #include <iostream>
@@ -33,7 +35,7 @@ static void __global__ add_efield(
   const double Ex,
   const double Ey,
   const double Ez,
-  const double* g_charge,
+  const float* g_charge,
   double* g_fx,
   double* g_fy,
   double* g_fz)
@@ -48,7 +50,40 @@ static void __global__ add_efield(
   }
 }
 
-void Add_Efield::compute(const int step, const std::vector<Group>& groups, Atom& atom)
+static void __global__ add_efield_bec(
+  const int num_atoms,
+  const int group_size,
+  const int group_size_sum,
+  const int* g_group_contents,
+  const double Ex,
+  const double Ey,
+  const double Ez,
+  const float* g_bec,
+  double* g_fx,
+  double* g_fy,
+  double* g_fz)
+{
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (tid < group_size) {
+    const int atom_id = g_group_contents[group_size_sum + tid];
+    const double bec[9] = {
+      g_bec[atom_id + 0 * num_atoms],
+      g_bec[atom_id + 1 * num_atoms],
+      g_bec[atom_id + 2 * num_atoms],
+      g_bec[atom_id + 3 * num_atoms],
+      g_bec[atom_id + 4 * num_atoms],
+      g_bec[atom_id + 5 * num_atoms],
+      g_bec[atom_id + 6 * num_atoms],
+      g_bec[atom_id + 7 * num_atoms],
+      g_bec[atom_id + 8 * num_atoms]
+    };
+    g_fx[atom_id] += bec[0] * Ex + bec[3] * Ey + bec[6] * Ez;
+    g_fy[atom_id] += bec[1] * Ex + bec[4] * Ey + bec[7] * Ez;
+    g_fz[atom_id] += bec[2] * Ex + bec[5] * Ey + bec[8] * Ez;
+  }
+}
+
+void Add_Efield::compute(const int step, const std::vector<Group>& groups, Atom& atom, Force& force)
 {
   for (int call = 0; call < num_calls_; ++call) {
     const int step_mod_table_length = step % table_length_[call];
@@ -58,17 +93,34 @@ void Add_Efield::compute(const int step, const std::vector<Group>& groups, Atom&
     const int num_atoms_total = atom.force_per_atom.size() / 3;
     const int group_size = groups[grouping_method_[call]].cpu_size[group_id_[call]];
     const int group_size_sum = groups[grouping_method_[call]].cpu_size_sum[group_id_[call]];
-    add_efield<<<(group_size - 1) / 64 + 1, 64>>>(
-      group_size,
-      group_size_sum,
-      groups[grouping_method_[call]].contents.data(),
-      Ex,
-      Ey,
-      Ez,
-      atom.charge.data(),
-      atom.force_per_atom.data(),
-      atom.force_per_atom.data() + num_atoms_total,
-      atom.force_per_atom.data() + num_atoms_total * 2);
+    if (is_nep_charge) {
+      GPU_Vector<float>& bec = force.potentials[0]->get_bec_reference();
+      add_efield_bec<<<(group_size - 1) / 64 + 1, 64>>>(
+        num_atoms_total,
+        group_size,
+        group_size_sum,
+        groups[grouping_method_[call]].contents.data(),
+        Ex,
+        Ey,
+        Ez,
+        bec.data(),
+        atom.force_per_atom.data(),
+        atom.force_per_atom.data() + num_atoms_total,
+        atom.force_per_atom.data() + num_atoms_total * 2);
+    }
+    else {
+      add_efield<<<(group_size - 1) / 64 + 1, 64>>>(
+        group_size,
+        group_size_sum,
+        groups[grouping_method_[call]].contents.data(),
+        Ex,
+        Ey,
+        Ez,
+        atom.charge.data(),
+        atom.force_per_atom.data(),
+        atom.force_per_atom.data() + num_atoms_total,
+        atom.force_per_atom.data() + num_atoms_total * 2);
+    }
     GPU_CHECK_KERNEL
   }
 }
@@ -160,6 +212,14 @@ void Add_Efield::parse(const char** param, int num_param, const std::vector<Grou
   if (num_calls_ > 10) {
     PRINT_INPUT_ERROR("add_efield cannot be used more than 10 times in one run.");
   }
+
+  is_nep_charge = check_is_nep_charge();
+  if (is_nep_charge) {
+    printf("    using the charge values predicted by the NEP-Charge model.\n");
+  } else {
+    printf("    using the charge values specified in model.xyz.\n");
+  }
+
 }
 
 void Add_Efield::finalize() { num_calls_ = 0; }

@@ -178,6 +178,13 @@ Bibliography
    | The Journal of Chemical Physics, **101**, 4177-4189 (1994)
    | DOI: `10.1063/1.467468 <https://doi.org/10.1063/1.467468>`
 
+
+.. [Mishin2005]
+   | Y. Mishin, M. J. Mehl, and D. A. Papaconstantopoulos
+   | *Phase stability in the Fe–Ni system: Investigation by first-principles calculations and atomistic simulations*
+   | Acta Materialia **53**, 4029 (2005)
+   | DOI: `10.1016/j.actamat.2005.05.001 <https://doi.org/10.1016/j.actamat.2005.05.001>`
+
 .. [Parrinello1981]
    | M. Parrinello and A. Rahman
    | *Polymorphic transitions in single crystals: A new molecular dynamics method*
@@ -296,3 +303,57 @@ Bibliography
    | *Mechanical and tribological properties of layered materials under high pressure: assessing the importance of many-body dispersion effects*
    | J. Chem. Theory Comput. **16(1)**, 666-676 (2020)
    | DOI: `10.1021/acs.jctc.9b00908 <https://doi.org/10.1021/acs.jctc.9b00908>`_
+
+.. [Stillinger1985]
+   | Frank H. Stillinger and Thomas A. Weber
+   | *Computer simulation of local order in condensed phases of silicon*
+   | Phys. Rev. B **31**, 5262-5271 (1985)
+   | DOI: `10.1103/PhysRevB.31.5262 <https://doi.org/10.1103/PhysRevB.31.5262>`_
+
+.. [Jiang2015]
+   | Jinwu Jiang
+   | *Parametrization of Stillinger-Weber potential based on valence force field model: application to single-layer MoS2 and black phosphorus*
+   | Nanotechnology **26**, 315706 (2015)
+   | DOI: `10.1088/0957-4484/26/31/315706 <https://doi.org/10.1088/0957-4484/26/31/315706>`_
+
+.. [Jiang2019]
+   | Jinwu Jiang
+   | *Misfit strain-induced buckling for transition-metal dichalcogenide lateral heterostructures: a molecular dynamics study*
+   | Acta Mech. Solida Sin. **32**, 17-28 (2019)
+   | DOI: `10.1007/s10338-018-0049-z <https://doi.org/10.1007/s10338-018-0049-z>`_
+
+.. [Leite2016]
+   | Rodolfo Paula Leite, Rodrigo Freitas, Rodolfo Azevedo and Maurice de Koning
+   | *The Uhlenbeck-Ford model: Exact virial coefficients and application as a reference system in fluid-phase free-energy calculations*
+   | J. Chem. Phys. 145, 194101 (2016)
+   | DOI: `10.1063/1.4967775 <https://doi.org/10.1063/1.4967775>`_
+
+.. [Leite2019]
+   | Rodolfo Paula Leite and Maurice de Koning
+   | *Nonequilibrium free-energy calculations of fluids using LAMMPS*
+   | Computational Materials Science, Volume 159, 316-326 (2019)
+   | DOI: `10.1016/j.commatsci.2018.12.029 <https://doi.org/10.1016/j.commatsci.2018.12.029>`_
+
+.. [Menon2021]
+   | Sarath Menon, Yury Lysogorskiy, Jutta Rogal and Ralf Drautz
+   | *Automated free-energy calculation from atomistic simulations*
+   | Phys. Rev. Materials 5, 103801, (2021)
+   | DOI: `10.1103/PhysRevMaterials.5.103801 <https://doi.org/10.1103/PhysRevMaterials.5.103801>`_
+
+.. [Steinhardt1983]
+   | Steinhardt, P. J., Nelson, D. R., & Ronchetti, M.
+   | *Bond-orientational order in liquids and glasses* 
+   | Physical Review B, 28(2), 784, (1983)
+   | DOI: `10.1103/PhysRevB.28.784 <https://doi.org/10.1103/PhysRevB.28.784>`_
+
+.. [Mickel2013]
+   | Mickel, W., Kapfer, S. C., Schröder-Turk, G. E., & Mecke, K. (2013).
+   | *Shortcomings of the bond orientational order parameters for the analysis of disordered particulate matter* 
+   | The Journal of chemical physics, 138(4), (2013).
+   | DOI: `10.1063/1.4774084 <https://doi.org/10.1063/1.4774084>`_
+
+.. [Bu2025]
+   | Hekai Bu, Wenwu Jiang, Penghua Ying, Ting Liang, Zheyong Fan, and Wengen Ouyang
+   | *Accurate modeling of LEGO-like vdW heterostructures: integrating machine learned with anisotropic interlayer potentials*
+   | arXiv, 2504, 12985 (2025)
+   | DOI: `10.48550/arXiv.2504.12985 <https://doi.org/10.48550/arXiv.2504.12985>`_

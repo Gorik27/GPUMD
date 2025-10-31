@@ -18,6 +18,7 @@ Dump per-atom data to user-specified file(s) in the extended XYZ format
 --------------------------------------------------------------------------------------------------*/
 
 #include "dump_xyz.cuh"
+#include "force/force.cuh"
 #include "model/atom.cuh"
 #include "model/box.cuh"
 #include "utilities/common.cuh"
@@ -52,6 +53,8 @@ static __global__ void gpu_sum(const int N, const double* g_data, double* g_data
 
 Dump_XYZ::Dump_XYZ(const char** param, int num_param, const std::vector<Group>& groups, Atom& atom) 
 {
+  is_nep_charge = check_is_nep_charge();
+
   parse(param, num_param, groups);
   if (atom.unwrapped_position.size() < atom.number_of_atoms * 3) {
     atom.unwrapped_position.resize(atom.number_of_atoms * 3);
@@ -139,9 +142,29 @@ void Dump_XYZ::parse(const char** param, int num_param, const std::vector<Group>
       quantities.has_mass_ = true;
       printf("    has mass.\n");
     }
+    if (strcmp(param[m], "charge") == 0) {
+      quantities.has_charge_ = true;
+      if (is_nep_charge){
+        printf("    has charge predicted by NEP-charge.\n");
+      } else {
+        printf("    has charge specified in model.xyz.\n");
+      }
+    }
+    if (strcmp(param[m], "bec") == 0) {
+      quantities.has_bec_ = true;
+      if (is_nep_charge){
+        printf("    has BEC predicted by NEP-charge.\n");
+      } else {
+        PRINT_INPUT_ERROR("Cannot output BEC for a non-NEP-charge model.\n");
+      }
+    }
     if (strcmp(param[m], "virial") == 0) {
       quantities.has_virial_ = true;
       printf("    has virial.\n");
+    }
+    if (strcmp(param[m], "group") == 0) {
+      quantities.has_group_ = true;
+      printf("    has group.\n");
     }
   }
 }
@@ -173,11 +196,15 @@ void Dump_XYZ::preprocess(
   if (quantities.has_virial_) {
     cpu_virial_per_atom_.resize(atom.number_of_atoms * 9);
   }
+  if (quantities.has_bec_) {
+    cpu_bec_.resize(atom.number_of_atoms * 9);
+  }
 }
 
 void Dump_XYZ::output_line2(
   const double time,
   const Box& box,
+  std::vector<Group>& groups,
   const std::vector<std::string>& cpu_atom_symbol,
   GPU_Vector<double>& virial_per_atom,
   GPU_Vector<double>& gpu_thermo)
@@ -242,6 +269,12 @@ void Dump_XYZ::output_line2(
   if (quantities.has_mass_) {
     fprintf(fid_, ":mass:R:1");
   }
+  if (quantities.has_charge_) {
+    fprintf(fid_, ":charge:R:1");
+  }
+  if (quantities.has_bec_) {
+    fprintf(fid_, ":bec:R:9");
+  }
   if (quantities.has_velocity_) {
     fprintf(fid_, ":vel:R:3");
   }
@@ -256,6 +289,10 @@ void Dump_XYZ::output_line2(
   }
   if (quantities.has_virial_) {
     fprintf(fid_, ":virial:R:9");
+  }
+  if (quantities.has_group_) {
+    const int num_grouping_methods = groups.size();
+    fprintf(fid_, ":group:I:%d", num_grouping_methods);
   }
 
   // Over
@@ -288,6 +325,18 @@ void Dump_XYZ::process(
   if (quantities.has_mass_) {
     atom.mass.copy_to_host(atom.cpu_mass.data());
   }
+  if (quantities.has_charge_) {
+    if (is_nep_charge) {
+      GPU_Vector<float>& nep_charge = force.potentials[0]->get_charge_reference();
+      nep_charge.copy_to_host(atom.cpu_charge.data());
+    } else {
+      atom.charge.copy_to_host(atom.cpu_charge.data());
+    }
+  }
+  if (quantities.has_bec_) {
+    GPU_Vector<float>& gpu_bec = force.potentials[0]->get_bec_reference();
+    gpu_bec.copy_to_host(cpu_bec_.data());
+  }
   if (quantities.has_velocity_) {
     atom.velocity_per_atom.copy_to_host(atom.cpu_velocity_per_atom.data());
   }
@@ -313,7 +362,7 @@ void Dump_XYZ::process(
   fprintf(fid_, "%d\n", number_of_atoms_to_dump);
 
   // line 2
-  output_line2(global_time, box, atom.cpu_atom_symbol, atom.virial_per_atom, thermo);
+  output_line2(global_time, box, groups, atom.cpu_atom_symbol, atom.virial_per_atom, thermo);
 
   // other lines
   for (int n = 0; n < number_of_atoms_to_dump; n++) {
@@ -330,6 +379,14 @@ void Dump_XYZ::process(
     }
     if (quantities.has_mass_) {
       fprintf(fid_, " %.8f", atom.cpu_mass[m]);
+    }
+    if (quantities.has_charge_) {
+      fprintf(fid_, " %.8f", atom.cpu_charge[m]);
+    }
+    if (quantities.has_bec_) {
+      for (int d = 0; d < 9; ++d) {
+        fprintf(fid_, " %.8f", cpu_bec_[m + atom.number_of_atoms * d]);
+      }
     }
     if (quantities.has_velocity_) {
       const double natural_to_A_per_fs = 1.0 / TIME_UNIT_CONVERSION;
@@ -355,6 +412,11 @@ void Dump_XYZ::process(
       const int index[9] = {0, 3, 4, 6, 1, 5, 7, 8, 2};
       for (int d = 0; d < 9; ++d) {
         fprintf(fid_, " %.8f", cpu_virial_per_atom_[m + atom.number_of_atoms * index[d]]);
+      }
+    }
+    if (quantities.has_group_) {
+      for (int d = 0; d < groups.size(); ++d) {
+        fprintf(fid_, " %d", groups[d].cpu_label[m]);
       }
     }
     fprintf(fid_, "\n");
