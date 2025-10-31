@@ -30,6 +30,9 @@ public:
   int num_types;          // number of atom types
   int population_size;    // population size for SNES
   int maximum_generation; // maximum number of generations for SNES;
+  int save_potential;     // number of generations between writing a checkpoint nep.txt file. 
+  int save_potential_format;   // format of checkpoint nep.txt file name
+  int save_potential_restart;  // if restart files should be written or not. 0=no, 1=yes
   int num_neurons1;       // number of nuerons in the 1st hidden layer (only one hidden layer)
   int basis_size_radial;  // for nep3
   int basis_size_angular; // for nep3
@@ -56,6 +59,7 @@ public:
   int prediction; // 0=no, 1=yes
   float initial_para;
   float sigma0;
+  int atomic_v;
   bool use_typewise_cutoff;
   bool use_typewise_cutoff_zbl;
   float typewise_cutoff_radial_factor;
@@ -63,6 +67,8 @@ public:
   float typewise_cutoff_zbl_factor;
   int output_descriptor;
   int charge_mode; // add dynamic charge to NEP potential model
+  bool has_bec = false; // check if there are target BEC values
+  int flip_charge = 0; // 1 for flipping charges upon restarting
   int fine_tune = 0; // fine_tune option; 0=no, 1=yes
   std::string fine_tune_nep_txt = "";
   std::string fine_tune_nep_restart = "";
@@ -82,16 +88,18 @@ public:
   bool is_lambda_e_set;
   bool is_lambda_f_set;
   bool is_lambda_v_set;
+  bool is_atomic_v_set;
   bool is_lambda_shear_set;
   bool is_batch_set;
   bool is_population_set;
   bool is_generation_set;
+  bool is_save_potential_set;
   bool is_type_weight_set;
   bool is_force_delta_set;
   bool is_zbl_set;
   bool is_use_typewise_cutoff_set;
   bool is_use_typewise_cutoff_zbl_set;
-  bool is_has_charge_set;
+  bool is_charge_mode_set;
 
   // other parameters
   int dim;                            // dimension of the descriptor vector
@@ -99,6 +107,7 @@ public:
   int dim_angular;                    // number of angular descriptor components
   int number_of_variables;            // total number of parameters (NN and descriptor)
   int number_of_variables_ann;        // number of parameters in the ANN only
+  int number_of_variables_ann_1;      // number of parameters in the ANN for one element
   int number_of_variables_descriptor; // number of parameters in the descriptor only
 
   // some arrays
@@ -137,6 +146,7 @@ private:
   void parse_lambda_e(const char** param, int num_param);
   void parse_lambda_f(const char** param, int num_param);
   void parse_lambda_v(const char** param, int num_param);
+  void parse_lambda_q(const char** param, int num_param);
   void parse_lambda_shear(const char** param, int num_param);
   void parse_force_delta(const char** param, int num_param);
   void parse_batch(const char** param, int num_param);
@@ -144,9 +154,11 @@ private:
   void parse_generation(const char** param, int num_param);
   void parse_initial_para(const char** param, int num_param);
   void parse_sigma0(const char** param, int num_param);
+  void parse_atomic_v(const char** param, int num_param);
   void parse_use_typewise_cutoff(const char** param, int num_param);
   void parse_use_typewise_cutoff_zbl(const char** param, int num_param);
   void parse_output_descriptor(const char** param, int num_param);
-  void parse_has_charge(const char** param, int num_param);
+  void parse_charge_mode(const char** param, int num_param);
   void parse_fine_tune(const char** param, int num_param);
+  void parse_save_potential(const char** param, int num_param);
 };

@@ -15,6 +15,7 @@
 
 #include "extrapolation.cuh"
 #include "utilities/gpu_macro.cuh"
+#include <cstring>
 
 #define PRINT_RUNTIME_ERROR(text)                                                                  \
   do {                                                                                             \
@@ -136,9 +137,9 @@ void Extrapolation::load_asi()
   printf("Loading the Active Set Inversion file (ASI): %s\n", asi_file_name.c_str());
   std::ifstream f(asi_file_name);
   std::string token;
-  int type_of_atom = 0;
   if (f.is_open()) {
     while (f >> token) {
+      int type_of_atom = -1;
       std::string element = token;
       for (int m = 0; m < atom->number_of_atoms; ++m) {
         if (element == atom->cpu_atom_symbol[m]) {
@@ -255,7 +256,7 @@ void Extrapolation::calculate_gamma()
 
   gpu_calculate_max_gamma<<<(N - 1) / 128 + 1, 128>>>(
     gamma_full.data(), gamma.data(), N, B_size_per_atom);
-  cudaDeviceSynchronize();
+  gpuDeviceSynchronize();
 }
 
 void Extrapolation::dump()

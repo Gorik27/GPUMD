@@ -17,7 +17,7 @@
 #include "utilities/gpu_vector.cuh"
 #include "utilities/gpu_macro.cuh"
 #ifdef USE_HIP
-  #include <hiprand_kernel.h>
+  #include <hiprand/hiprand_kernel.h>
 #else
   #include <curand_kernel.h>
 #endif
@@ -70,5 +70,5 @@ protected:
   void regularize_NEP4(Parameters& para);
   void sort_population(Parameters& para);
   void update_mu_and_sigma(Parameters& para);
-  void output_mu_and_sigma(Parameters& para);
+  void output_mu_and_sigma(Parameters& para, const char* filename);
 };

@@ -64,11 +64,15 @@ public:
     bool has_potential_ = false;
     bool has_unwrapped_position_ = false;
     bool has_mass_ = false;
+    bool has_charge_ = false;
+    bool has_bec_ = false;
     bool has_virial_ = false;
+    bool has_group_ = false;
   };
 
 private:
 
+  bool is_nep_charge = false;
   int grouping_method_ = -1;
   int group_id_ = -1;
   int dump_interval_ = 1;
@@ -83,10 +87,12 @@ private:
   std::vector<double> cpu_virial_per_atom_;
   GPU_Vector<double> gpu_total_virial_;
   std::vector<double> cpu_total_virial_;
+  std::vector<float> cpu_bec_;
 
   void output_line2(
     const double time,
     const Box& box,
+    std::vector<Group>& group,
     const std::vector<std::string>& cpu_atom_symbol,
     GPU_Vector<double>& virial_per_atom,
     GPU_Vector<double>& gpu_thermo);

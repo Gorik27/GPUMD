@@ -36,7 +36,7 @@ Using ``x``, ``y``, ``z``, ``xy``, ``yz``, ``xz`` allows one to specify each str
 
 The parameters :attr:`<p_1>` and :attr:`<p_2>` specify the initial and final pressure, respectively.
 Finally, the optional parameter :attr:`<tau_press>`, which defaults to ``1000``, determines the period of the barostat in units of the timestep.
-It determines how strongly the system is coupled to the barostat.
+It determines how strongly the system is coupled to the barostat and should be :math:`\geq 200` timesteps.
 
 The :attr:`nph_mttk` keyword can be used in analoguous fashion to run simulations in the isenthalpic (NPH) ensemble::
 
@@ -70,7 +70,7 @@ This command ramps the temperature from 300 K to 1000 K, while keeping the press
 
     ensemble npt_mttk temp 300 300 aniso 10 10
 
-This command replaces ``iso`` with ``ansio``.
+This command replaces ``iso`` with ``aniso``.
 The three dimensions of the cell thus change independently, but `xy`, `xz` and `yz` remain unchanged.
 
 .. code-block:: rst
